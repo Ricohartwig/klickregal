@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { CabinetGeometryResult, HardwareKind } from '@/core/geometry';
+import type { CabinetGeometryResult, HardwareKind, ProfilePart, Vec3 } from '@/core/geometry';
+import { profileOriginMm } from '@/components/viewport/profilePlacement';
 
 const MM = 0.001;
 
@@ -124,6 +125,93 @@ function InstancedParts({
   );
 }
 
+function profileAxis(rotation: Vec3): THREE.Vector3 {
+  if (Math.abs(rotation.z) === 90) {
+    return new THREE.Vector3(0, rotation.z > 0 ? 1 : -1, 0);
+  }
+  if (Math.abs(rotation.y) === 90) {
+    return new THREE.Vector3(0, 0, rotation.y < 0 ? 1 : -1);
+  }
+  return new THREE.Vector3(1, 0, 0);
+}
+
+function sectionMm(part: ProfilePart): number {
+  if (part.series === '20x20_B6') {
+    return 20;
+  }
+  if (part.series === '40x40_I8') {
+    return 40;
+  }
+  return 30;
+}
+
+function endConnectorGeometry(section: number): THREE.BufferGeometry {
+  const size = section * MM * 0.96;
+  const length = Math.max(36, section + 8) * MM;
+  const body = new THREE.BoxGeometry(length, size, size);
+  body.translate(length / 2, 0, 0);
+  const bolt = new THREE.CylinderGeometry(3.2 * MM, 3.2 * MM, 5 * MM, 10);
+  const boltA = bolt.clone();
+  const boltB = bolt.clone();
+  boltA.translate(length * 0.32, size / 2 + 2.5 * MM, -size * 0.22);
+  boltB.translate(length * 0.72, size / 2 + 2.5 * MM, size * 0.22);
+  const merged = mergeGeometries([body, boltA, boltB], false);
+  body.dispose();
+  bolt.dispose();
+  boltA.dispose();
+  boltB.dispose();
+  return merged ?? new THREE.BoxGeometry(length, size, size);
+}
+
+function bracketCapGeometry(section: number): THREE.BoxGeometry {
+  const size = section * MM + 1.5 * MM;
+  const cap = new THREE.BoxGeometry(6 * MM, size, size);
+  cap.translate(-3 * MM, 0, 0);
+  return cap;
+}
+
+function seatedBracket(
+  target: Vec3,
+  profiles: ProfilePart[],
+  bounds: CabinetGeometryResult['boundingBox'],
+  explosionFactor: number,
+): { body: THREE.Matrix4; cap: THREE.Matrix4 } | null {
+  let bestDistance = 45;
+  let best: { end: Vec3; inward: THREE.Vector3 } | null = null;
+  for (const profile of profiles) {
+    if (Math.abs(profile.rotation.z) === 90) {
+      continue;
+    }
+    const axis = profileAxis(profile.rotation);
+    const start = profileOriginMm(profile.position, profile.rotation, sectionMm(profile));
+    const end = {
+      x: start.x + axis.x * profile.lengthMm,
+      y: start.y + axis.y * profile.lengthMm,
+      z: start.z + axis.z * profile.lengthMm,
+    };
+    for (const candidate of [
+      { end: start, inward: axis.clone() },
+      { end, inward: axis.clone().negate() },
+    ]) {
+      const distance = Math.hypot(candidate.end.x - target.x, candidate.end.y - target.y, candidate.end.z - target.z);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = candidate;
+      }
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), best.inward.clone().normalize());
+  const end = exploded(best.end.x, best.end.y, best.end.z, bounds, explosionFactor);
+  const body = end.clone().add(best.inward.clone().normalize().multiplyScalar(18 * MM));
+  return {
+    body: new THREE.Matrix4().compose(body, quaternion, new THREE.Vector3(1, 1, 1)),
+    cap: new THREE.Matrix4().compose(end, quaternion, new THREE.Vector3(1, 1, 1)),
+  };
+}
+
 function pointMatrix(position: THREE.Vector3, rotation?: THREE.Euler, scale?: THREE.Vector3): THREE.Matrix4 {
   const quaternion = new THREE.Quaternion();
   if (rotation) {
@@ -140,7 +228,9 @@ export function HardwareInstances({
   explosionFactor?: number;
 }) {
   const invalidate = useThree((state) => state.invalidate);
-  const cornerGeometry = useMemo(() => lBracketGeometry(28, 4, 4), []);
+  const section = geometry.profiles[0] ? sectionMm(geometry.profiles[0]) : 30;
+  const cornerGeometry = useMemo(() => endConnectorGeometry(section), [section]);
+  const bracketCapGeometryMemo = useMemo(() => bracketCapGeometry(section), [section]);
   const insideGeometry = useMemo(() => lBracketGeometry(18, 3, 3), []);
   const clampGeometry = useMemo(() => spanntellerGeometry(), []);
   const footGeometry = useMemo(() => boxGeometry(65, 2.5, 65), []);
@@ -151,7 +241,7 @@ export function HardwareInstances({
   const catchGeometry = useMemo(() => boxGeometry(32, 12, 16), []);
   const slideGeometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
 
-  const cornerMaterial = useMemo(() => material('#6b7280', 0.45, 0.55), []);
+  const cornerMaterial = useMemo(() => material('#d5d8de', 0.72, 0.32), []);
   const insideMaterial = useMemo(() => material('#d5d8de', 0.72, 0.32), []);
   const clampMaterial = useMemo(() => material('#1c1c1c', 0.2, 0.72), []);
   const footMaterial = useMemo(() => material('#b8b8b8', 0.7, 0.35), []);
@@ -165,6 +255,7 @@ export function HardwareInstances({
   useEffect(() => {
     const geometries = [
       cornerGeometry,
+      bracketCapGeometryMemo,
       insideGeometry,
       clampGeometry,
       footGeometry,
@@ -192,6 +283,7 @@ export function HardwareInstances({
       materials.forEach((entry) => entry.dispose());
     };
   }, [
+    bracketCapGeometryMemo,
     capGeometry,
     capMaterial,
     catchGeometry,
@@ -226,6 +318,10 @@ export function HardwareInstances({
         const top = part.position.y > geometry.boundingBox.heightMm / 2;
         return pointMatrix(position, top ? new THREE.Euler(Math.PI, 0, 0) : undefined);
       });
+    const seated = geometry.hardware
+      .filter((part) => part.kind === 'corner_bracket')
+      .map((part) => seatedBracket(part.position, geometry.profiles, geometry.boundingBox, explosionFactor))
+      .filter((entry): entry is { body: THREE.Matrix4; cap: THREE.Matrix4 } => entry !== null);
     const slides = geometry.slides.map((part) => {
       const position = at(part);
       const alongZ = part.axis === 'z';
@@ -245,7 +341,8 @@ export function HardwareInstances({
       );
     });
     return {
-      corner: ofKind('corner_bracket'),
+      corner: seated.map((entry) => entry.body),
+      bracketCaps: seated.map((entry) => entry.cap),
       inside: explosionFactor > 0 ? ofKind('inside_bracket') : [],
       clamp: clamps,
       foot: ofKind('foot_plate'),
@@ -258,7 +355,7 @@ export function HardwareInstances({
       catch: ofKind('magnetic_catch'),
       slides,
     };
-  }, [explosionFactor, geometry.accessories, geometry.boundingBox, geometry.hardware, geometry.slides]);
+  }, [explosionFactor, geometry.accessories, geometry.boundingBox, geometry.hardware, geometry.profiles, geometry.slides]);
 
   useLayoutEffect(() => {
     invalidate();
@@ -267,6 +364,7 @@ export function HardwareInstances({
   return (
     <group>
       <InstancedParts geometry={cornerGeometry} surface={cornerMaterial} matrices={placed.corner} />
+      <InstancedParts geometry={bracketCapGeometryMemo} surface={capMaterial} matrices={placed.bracketCaps} />
       <InstancedParts geometry={insideGeometry} surface={insideMaterial} matrices={placed.inside} />
       <InstancedParts geometry={clampGeometry} surface={clampMaterial} matrices={placed.clamp} />
       <InstancedParts geometry={footGeometry} surface={footMaterial} matrices={placed.foot} />
