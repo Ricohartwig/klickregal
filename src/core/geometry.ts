@@ -152,14 +152,53 @@ function postLength(config: CabinetConfig): number {
   return mm(config.room.heightMm - 50);
 }
 
-function columnOuterLefts(bays: readonly Bay[]): number[] {
+function crossBraceLength(config: CabinetConfig, bay: Bay, level: Level): number {
+  const p = getProfileSeries(config.series).sectionMm;
+  const slide = getSlideForSeries(config.series);
+  const frameW = level.boxWidthMm - FALLTHROUGH_MM + 2 * p;
+  return frameW + 2 * slide.thicknessMm + 2 * playPerSide(config.series, bay, level);
+}
+
+function bayCenterMm(config: CabinetConfig, bay: Bay): number {
+  const p = getProfileSeries(config.series).sectionMm;
+  const pullout = bay.levels.find((level) => level.type === 'pullout');
+  if (pullout) {
+    return crossBraceLength(config, bay, pullout) + p;
+  }
+  const framed = bay.levels.find(
+    (level) =>
+      level.type === 'fixed_eurobox' ||
+      level.type === 'solid_shelf' ||
+      level.type === 'riffle_plate',
+  );
+  if (framed) {
+    return framed.boxWidthMm - FALLTHROUGH_MM + 3 * p;
+  }
+  return bay.widthMm;
+}
+
+function columnOuterLefts(config: CabinetConfig): number[] {
   const xs = [0];
   let x = 0;
-  for (const bay of bays) {
-    x += bay.widthMm;
+  for (const bay of config.bays) {
+    x += bayCenterMm(config, bay);
     xs.push(x);
   }
   return xs;
+}
+
+function structuralDepthMm(config: CabinetConfig): number {
+  const p = getProfileSeries(config.series).sectionMm;
+  let depth = 0;
+  for (const bay of config.bays) {
+    for (const level of bay.levels) {
+      if (level.type === 'clothes_rail') {
+        continue;
+      }
+      depth = Math.max(depth, level.boxLengthMm - FALLTHROUGH_MM + 2 * p);
+    }
+  }
+  return depth > 0 ? depth : config.depthMm;
 }
 
 function compatibleHardwareId(series: ProfileSeriesId, id: string | null): string | null {
@@ -370,7 +409,7 @@ function addPullout(
   const frameW = l5 + 2 * p;
   const l3 = l2 - 2 * p - (config.series === '30x30_B8' && boxL >= 900 ? 5 : 0);
   const play = playPerSide(config.series, bay, level);
-  const l4 = frameW + 2 * slide.thicknessMm + 2 * play;
+  const l4 = crossBraceLength(config, bay, level);
   const alongLength = level.orientation === 'crosswise' ? 'x' : 'z';
   const widthAxis = alongLength === 'z' ? 'x' : 'z';
   const clearOrigin = alongLength === 'z' ? clearX : clearZ;
@@ -414,20 +453,6 @@ function addPullout(
     levelId: level.id,
     isMoving: false,
   });
-
-  for (const y of [yRail - p, yRail + slide.heightMm]) {
-    const position = at(p, 0, false);
-    position.y = y;
-    addProfile(build, config, {
-      partCode: 'Nr.4',
-      position,
-      rotation: rotationForAxis(widthAxis),
-      lengthMm: l4,
-      bayId: bay.id,
-      levelId: level.id,
-      isMoving: false,
-    });
-  }
 
   addProfile(build, config, {
     partCode: 'Nr.2',
@@ -512,6 +537,44 @@ function addPullout(
       outerOverhangMm: slide.outerOverhangMm,
       travelMm: mm(travel),
       axis: alongLength,
+    });
+  }
+}
+
+function addSharedCrossBraces(
+  build: Build,
+  config: CabinetConfig,
+  bay: Bay,
+  clearX: number,
+  clearZ: number,
+  clearW: number,
+  clearD: number,
+): void {
+  const level = bay.levels.find((entry) => entry.type === 'pullout');
+  if (!level) {
+    return;
+  }
+  const p = getProfileSeries(config.series).sectionMm;
+  const slide = getSlideForSeries(config.series);
+  const l4 = crossBraceLength(config, bay, level);
+  const alongLength = level.orientation === 'crosswise' ? 'x' : 'z';
+  const widthAxis = alongLength === 'z' ? 'x' : 'z';
+  const clearOrigin = alongLength === 'z' ? clearX : clearZ;
+  const clearSpan = alongLength === 'z' ? clearW : clearD;
+  const lengthOrigin = alongLength === 'z' ? clearZ : clearX;
+  const fixedStart = clearOrigin + (clearSpan - (l4 + 2 * p)) / 2;
+  for (const y of [level.yMm - p, level.yMm + slide.heightMm]) {
+    const position = { x: 0, y, z: 0 };
+    position[widthAxis] = fixedStart + p;
+    position[alongLength] = lengthOrigin;
+    addProfile(build, config, {
+      partCode: 'Nr.4',
+      position,
+      rotation: rotationForAxis(widthAxis),
+      lengthMm: l4,
+      bayId: bay.id,
+      levelId: null,
+      isMoving: false,
     });
   }
 }
@@ -779,9 +842,15 @@ function addCarcass(
   }
 }
 
-function addPosts(build: Build, config: CabinetConfig, columns: readonly number[], postLen: number): void {
+function addPosts(
+  build: Build,
+  config: CabinetConfig,
+  columns: readonly number[],
+  postLen: number,
+  depthMm: number,
+): void {
   const p = getProfileSeries(config.series).sectionMm;
-  const frontZ = config.depthMm - p;
+  const frontZ = depthMm - p;
   const series = getProfileSeries(config.series);
   const clampId = compatibleHardwareId(config.series, 'spannteller_m8x80');
   const footId = compatibleHardwareId(config.series, 'foot_plate_m8');
@@ -891,8 +960,9 @@ function addAccessory(
 export function generateCabinetGeometry(config: CabinetConfig): CabinetGeometryResult {
   const series = getProfileSeries(config.series);
   const p = series.sectionMm;
-  const columns = columnOuterLefts(config.bays);
+  const columns = columnOuterLefts(config);
   const postLen = postLength(config);
+  const depthMm = structuralDepthMm(config);
   const outerWidth = (columns[columns.length - 1] ?? 0) + p;
   const build: Build = {
     profiles: [],
@@ -904,16 +974,17 @@ export function generateCabinetGeometry(config: CabinetConfig): CabinetGeometryR
     accessories: [],
   };
 
-  addPosts(build, config, columns, postLen);
+  addPosts(build, config, columns, postLen, depthMm);
 
   config.bays.forEach((bay, index) => {
     const clearX = (columns[index] ?? 0) + p;
     const clearZ = p;
-    const clearW = bay.widthMm - p;
-    const clearD = config.depthMm - 2 * p;
+    const clearW = bayCenterMm(config, bay) - p;
+    const clearD = depthMm - 2 * p;
     for (const level of bay.levels) {
       addLevel(build, config, bay, level, clearX, clearZ, clearW, clearD);
     }
+    addSharedCrossBraces(build, config, bay, clearX, clearZ, clearW, clearD);
     addCarcass(build, config, bay, index, columns, clearX, clearZ, clearW, clearD, postLen);
   });
 
@@ -926,7 +997,7 @@ export function generateCabinetGeometry(config: CabinetConfig): CabinetGeometryR
     boundingBox: {
       widthMm: mm(outerWidth),
       heightMm: config.room.heightMm,
-      depthMm: config.depthMm,
+      depthMm: mm(depthMm),
     },
   };
 }
