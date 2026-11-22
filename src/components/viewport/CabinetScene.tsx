@@ -4,10 +4,14 @@ import { ContactShadows, Grid } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { RefObject } from 'react';
 import * as THREE from 'three';
+import { AccessoriesMesh } from '@/components/viewport/AccessoriesMesh';
 import { CameraRig } from '@/components/viewport/CameraRig';
 import { DimensionLines } from '@/components/viewport/DimensionLines';
+import { EuroboxMesh } from '@/components/viewport/EuroboxMesh';
 import { HardwareInstances } from '@/components/viewport/HardwareInstances';
+import { PanelsAndDoors } from '@/components/viewport/PanelsAndDoors';
 import { ProfileMesh } from '@/components/viewport/ProfileMesh';
+import { PulloutAssembly } from '@/components/viewport/PulloutAssembly';
 import { RoomEnvelope } from '@/components/viewport/RoomEnvelope';
 import { useCabinetDerived, usePlannerStore } from '@/store/usePlannerStore';
 
@@ -62,7 +66,14 @@ export default function CabinetScene({ portal }: { portal: RefObject<HTMLDivElem
         staticsOverlay={staticsOverlay}
         explosionFactor={explosionFactor}
       />
+      <PulloutAssembly geometry={geometry} collisions={collisions} explosionFactor={explosionFactor} />
       <HardwareInstances geometry={geometry} explosionFactor={explosionFactor} />
+      <PanelsAndDoors panels={geometry.panels} doors={geometry.doors} accessories={geometry.accessories} />
+      <EuroboxMesh
+        boxes={geometry.euroboxes.filter((box) => !box.isMoving)}
+        collisions={collisions}
+      />
+      <AccessoriesMesh accessories={geometry.accessories} />
       <DimensionLines
         geometry={geometry}
         config={config}

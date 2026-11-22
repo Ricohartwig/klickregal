@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { CabinetGeometryResult } from '@/core/geometry';
 import type { ProfileSeriesId } from '@/core/schema';
 import type { StaticStatus, StaticsReport } from '@/core/statics';
+import { usePlannerStore } from '@/store/usePlannerStore';
 
 const MM = 0.001;
 
@@ -89,7 +90,7 @@ function tSlotShape(series: ProfileSeriesId): THREE.Shape {
   return shape;
 }
 
-function unitProfileGeometry(series: ProfileSeriesId): THREE.ExtrudeGeometry {
+export function createUnitProfileGeometry(series: ProfileSeriesId): THREE.ExtrudeGeometry {
   const geometry = new THREE.ExtrudeGeometry(tSlotShape(series), {
     depth: 1,
     bevelEnabled: false,
@@ -128,6 +129,7 @@ function ProfileSeriesInstances({
   statics,
   staticsOverlay,
   explosionFactor,
+  selectedLevelId,
 }: {
   series: ProfileSeriesId;
   finish: 'silver' | 'black';
@@ -135,10 +137,11 @@ function ProfileSeriesInstances({
   statics?: StaticsReport | null;
   staticsOverlay: boolean;
   explosionFactor: number;
+  selectedLevelId: string | null;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const invalidate = useThree((state) => state.invalidate);
-  const profileGeometry = useMemo(() => unitProfileGeometry(series), [series]);
+  const profileGeometry = useMemo(() => createUnitProfileGeometry(series), [series]);
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -152,7 +155,9 @@ function ProfileSeriesInstances({
     () =>
       geometry.profiles
         .map((part, index) => ({ part, index }))
-        .filter((entry) => entry.part.series === series && entry.part.finish === finish),
+        .filter(
+          (entry) => entry.part.series === series && entry.part.finish === finish && !entry.part.isMoving,
+        ),
     [finish, geometry.profiles, series],
   );
 
@@ -179,14 +184,18 @@ function ProfileSeriesInstances({
       matrix.compose(origin, quaternion, scale);
       mesh.setMatrixAt(slot, matrix);
       const status = statics?.profiles[index]?.status;
-      mesh.setColorAt(slot, profileColor(part.finish, status, staticsOverlay));
+      const color = profileColor(part.finish, status, staticsOverlay);
+      if (part.levelId && part.levelId === selectedLevelId) {
+        color.lerp(new THREE.Color('#ffffff'), 0.28);
+      }
+      mesh.setColorAt(slot, color);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) {
       mesh.instanceColor.needsUpdate = true;
     }
     invalidate();
-  }, [entries, explosionFactor, geometry.boundingBox, invalidate, series, statics, staticsOverlay]);
+  }, [entries, explosionFactor, geometry.boundingBox, invalidate, selectedLevelId, series, statics, staticsOverlay]);
 
   useEffect(() => {
     return () => {
@@ -206,6 +215,21 @@ function ProfileSeriesInstances({
       args={[profileGeometry, material, entries.length]}
       castShadow
       receiveShadow
+      onClick={(event) => {
+        event.stopPropagation();
+        const slot = event.instanceId;
+        if (slot === undefined) {
+          return;
+        }
+        const entry = entries[slot];
+        if (!entry?.part.bayId && !entry?.part.levelId) {
+          return;
+        }
+        usePlannerStore.getState().setView({
+          selectedBayId: entry.part.bayId,
+          selectedLevelId: entry.part.levelId,
+        });
+      }}
     />
   );
 }
@@ -223,6 +247,7 @@ export function ProfileMesh({
 }) {
   const seriesIds = ['20x20_B6', '30x30_B8', '40x40_I8'] as const;
   const finishes = ['silver', 'black'] as const;
+  const selectedLevelId = usePlannerStore((state) => state.selectedLevelId);
 
   return (
     <group>
@@ -236,6 +261,7 @@ export function ProfileMesh({
             statics={statics}
             staticsOverlay={staticsOverlay}
             explosionFactor={explosionFactor}
+            selectedLevelId={selectedLevelId}
           />
         )),
       )}
