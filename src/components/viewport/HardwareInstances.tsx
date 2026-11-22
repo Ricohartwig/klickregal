@@ -233,11 +233,13 @@ export function HardwareInstances({
       const position = at(part);
       const alongZ = part.axis === 'z';
       if (alongZ) {
+        position.x += (part.thicknessMm * MM) / 2;
         position.y += (part.heightMm * MM) / 2;
         position.z += (part.lengthMm * MM) / 2;
       } else {
         position.x += (part.lengthMm * MM) / 2;
         position.y += (part.heightMm * MM) / 2;
+        position.z += (part.thicknessMm * MM) / 2;
       }
       return pointMatrix(
         position,

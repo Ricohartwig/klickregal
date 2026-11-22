@@ -398,7 +398,7 @@ function addPullout(
   clearZ: number,
   clearW: number,
   clearD: number,
-): void {
+): { x: number; z: number } {
   const series = getProfileSeries(config.series);
   const p = series.sectionMm;
   const slide = getSlideForSeries(config.series);
@@ -539,6 +539,10 @@ function addPullout(
       axis: alongLength,
     });
   }
+  const outer = { x: 0, z: 0 };
+  outer[widthAxis] = movingStart;
+  outer[alongLength] = lengthOrigin;
+  return outer;
 }
 
 function addSharedCrossBraces(
@@ -588,6 +592,7 @@ function placeBoxes(
   moving: boolean,
   travelX: number,
   travelZ: number,
+  shelfY: number,
 ): void {
   for (const placement of level.boxes) {
     const box = getEurobox(placement.boxId);
@@ -598,7 +603,7 @@ function placeBoxes(
       boxId: placement.boxId,
       position: {
         x: mm(originX + placement.xMm + travelX),
-        y: level.yMm,
+        y: shelfY,
         z: mm(originZ + placement.zMm + travelZ),
       },
       lengthMm: box.lengthMm,
@@ -622,17 +627,19 @@ function addLevel(
   const p = getProfileSeries(config.series).sectionMm;
   const alongLength = level.orientation === 'crosswise' ? 'x' : 'z';
   if (level.type === 'pullout') {
-    addPullout(build, config, bay, level, clearX, clearZ, clearW, clearD);
+    const outer = addPullout(build, config, bay, level, clearX, clearZ, clearW, clearD);
     const travel = level.openProgress * slideLengthFor(config.series, level);
+    const inset = p - FALLTHROUGH_MM / 2;
     placeBoxes(
       build,
       bay,
       level,
-      clearX,
-      clearZ,
+      outer.x + inset,
+      outer.z + inset,
       true,
       alongLength === 'x' ? travel : 0,
       alongLength === 'z' ? travel : 0,
+      level.yMm + p,
     );
     return;
   }
@@ -652,22 +659,14 @@ function addLevel(
   }
 
   const frameY = level.yMm - p;
-  const frame = addSupportFrame(
-    build,
-    config,
-    bay,
-    level,
-    alongLength === 'z' ? clearX + (clearW - (level.boxWidthMm - FALLTHROUGH_MM + 2 * p)) / 2 : clearX,
-    frameY,
-    alongLength === 'z' ? clearZ + (clearD - (level.boxLengthMm - FALLTHROUGH_MM + 2 * p)) / 2 : clearZ,
-    alongLength,
-  );
+  const frameX = alongLength === 'z' ? clearX + (clearW - (level.boxWidthMm - FALLTHROUGH_MM + 2 * p)) / 2 : clearX;
+  const frameZ = alongLength === 'z' ? clearZ + (clearD - (level.boxLengthMm - FALLTHROUGH_MM + 2 * p)) / 2 : clearZ;
+  const frame = addSupportFrame(build, config, bay, level, frameX, frameY, frameZ, alongLength);
   if (level.type === 'solid_shelf' || level.type === 'riffle_plate') {
-    const frameX = alongLength === 'z' ? clearX + (clearW - frame.frameW) / 2 : clearX;
-    const frameZ = alongLength === 'z' ? clearZ + (clearD - frame.frameD) / 2 : clearZ;
     addShelfPanel(build, bay, level, frameX, frameZ, frame.frameW, frame.frameD, alongLength);
   }
-  placeBoxes(build, bay, level, clearX + p, clearZ + p, false, 0, 0);
+  const inset = p - FALLTHROUGH_MM / 2;
+  placeBoxes(build, bay, level, frameX + inset, frameZ + inset, false, 0, 0, level.yMm);
 }
 
 function addCarcass(
