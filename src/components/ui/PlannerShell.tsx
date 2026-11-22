@@ -8,12 +8,15 @@ import { PanelsAccessoriesTab } from '@/components/ui/PanelsAccessoriesTab';
 import { RoomSystemTab } from '@/components/ui/RoomSystemTab';
 import { TopToolbar } from '@/components/ui/TopToolbar';
 import { ViewportClientWrapper } from '@/components/viewport/ViewportClientWrapper';
-import { redoPlanner, undoPlanner, useCabinetDerived } from '@/store/usePlannerStore';
+import { decodeConfigFromUrl } from '@/lib/export';
+import { redoPlanner, undoPlanner, useCabinetDerived, usePlannerStore } from '@/store/usePlannerStore';
 
 export function PlannerShell() {
   const [tab, setTab] = useState<'room' | 'bays' | 'panels'>('room');
   const [drawer, setDrawer] = useState(false);
   const [drawerTab, setDrawerTab] = useState<'bom' | 'cutting'>('bom');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const { collisions } = useCabinetDerived();
 
   useEffect(() => {
@@ -42,11 +45,46 @@ export function PlannerShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => {
+    if (!window.location.href.includes('config=')) {
+      return;
+    }
+    const config = decodeConfigFromUrl(window.location.href);
+    if (!config || !usePlannerStore.getState().importConfig(config)) {
+      usePlannerStore.getState().loadPreset('golden_master_l1255');
+      setToast('Der Link ist ungültig. Das Standard-Preset wurde geladen.');
+      return;
+    }
+    setToast('Konfiguration aus dem Link geladen.');
+  }, []);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-100 text-slate-950">
-      <TopToolbar onToggleDrawer={() => setDrawer((open) => !open)} />
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[380px] min-w-[360px] max-w-[400px] shrink-0 flex-col border-r border-slate-200 bg-white">
+    <div className="flex h-dvh w-screen flex-col bg-slate-100 text-slate-950">
+      <TopToolbar
+        onToggleDrawer={() => setDrawer((open) => !open)}
+        onToggleInspector={() => setInspectorOpen((open) => !open)}
+        onNotify={setToast}
+      />
+      <div className="relative flex min-h-0 flex-1">
+        {inspectorOpen ? (
+          <button
+            type="button"
+            aria-label="Inspektor schließen"
+            className="absolute inset-0 z-20 bg-slate-900/30 md:hidden"
+            onClick={() => setInspectorOpen(false)}
+          />
+        ) : null}
+        <aside
+          className={`${inspectorOpen ? 'absolute inset-y-0 left-0 z-30 flex shadow-xl' : 'hidden'} w-[min(100%,380px)] shrink-0 flex-col border-r border-slate-200 bg-white md:static md:z-auto md:flex md:w-[380px] md:min-w-[360px] md:max-w-[400px] md:shadow-none`}
+        >
           <div className="grid grid-cols-3 border-b border-slate-200">
             <button
               type="button"
@@ -81,7 +119,7 @@ export function PlannerShell() {
             </div>
           </main>
           {drawer ? (
-            <section className="flex h-[min(48vh,460px)] min-h-64 shrink-0 flex-col border-t border-slate-200 bg-white">
+            <section className="flex h-[min(48vh,460px)] min-h-48 shrink-0 flex-col border-t border-slate-200 bg-white">
               <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3">
                 <button
                   type="button"
@@ -106,6 +144,11 @@ export function PlannerShell() {
           ) : null}
         </div>
       </div>
+      {toast ? (
+        <div role="status" className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }

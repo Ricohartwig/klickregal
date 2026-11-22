@@ -1,6 +1,14 @@
 'use client';
 
+import { useRef } from 'react';
 import { useStore } from 'zustand';
+import {
+  captureViewportPng,
+  downloadTextFile,
+  encodeConfigToUrl,
+  exportBomCsv,
+  exportPdfBlueprint,
+} from '@/lib/export';
 import { PRESET_IDS, type PresetId } from '@/store/presets';
 import { redoPlanner, undoPlanner, useCabinetDerived, usePlannerStore, type CameraPreset } from '@/store/usePlannerStore';
 
@@ -28,7 +36,15 @@ function ampel(collisions: number, statics: 'OK' | 'WARN' | 'FAIL'): { label: st
   return { label: 'OK', className: 'bg-emerald-600 text-white' };
 }
 
-export function TopToolbar({ onToggleDrawer }: { onToggleDrawer: () => void }) {
+export function TopToolbar({
+  onToggleDrawer,
+  onToggleInspector,
+  onNotify,
+}: {
+  onToggleDrawer: () => void;
+  onToggleInspector: () => void;
+  onNotify: (message: string) => void;
+}) {
   const past = useStore(usePlannerStore.temporal, (state) => state.pastStates.length);
   const future = useStore(usePlannerStore.temporal, (state) => state.futureStates.length);
   const loadPreset = usePlannerStore((state) => state.loadPreset);
@@ -42,7 +58,11 @@ export function TopToolbar({ onToggleDrawer }: { onToggleDrawer: () => void }) {
   const globalPulloutProgress = usePlannerStore((state) => state.globalPulloutProgress);
   const setExplosionFactor = usePlannerStore((state) => state.setExplosionFactor);
   const setAllPullouts = usePlannerStore((state) => state.setAllPullouts);
-  const { geometry, bom, collisions, statics } = useCabinetDerived();
+  const { config, geometry, bom, collisions, statics, cuttingPlan } = useCabinetDerived();
+  const customPrices = usePlannerStore((state) => state.customPrices);
+  const useCustomPrices = usePlannerStore((state) => state.useCustomPrices);
+  const importConfig = usePlannerStore((state) => state.importConfig);
+  const fileRef = useRef<HTMLInputElement>(null);
   const worst = statics.levels.some((level) => level.status === 'FAIL')
     ? 'FAIL'
     : statics.levels.some((level) => level.status === 'WARN')
@@ -51,10 +71,23 @@ export function TopToolbar({ onToggleDrawer }: { onToggleDrawer: () => void }) {
   const errors = collisions.filter((issue) => issue.severity === 'error').length;
   const light = ampel(errors, worst);
   const box = geometry.boundingBox;
+  const snapshot = {
+    config,
+    geometry,
+    bom,
+    cuttingPlan,
+    collisions,
+    statics,
+    customPrices: useCustomPrices ? customPrices : undefined,
+    previewDataUrl: null as string | null,
+  };
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3">
+    <header className="flex h-14 shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3">
       <div className="flex shrink-0 items-center gap-2">
+        <button type="button" className="h-8 rounded-md border border-slate-300 px-2 text-sm md:hidden" onClick={onToggleInspector}>
+          Inspektor
+        </button>
         <p className="text-sm font-semibold tracking-tight text-slate-950">KlickRegal 3D-Planer</p>
         <select
           aria-label="Preset"
@@ -133,9 +166,66 @@ export function TopToolbar({ onToggleDrawer }: { onToggleDrawer: () => void }) {
             min={0}
             max={100}
             value={Math.round(globalPulloutProgress * 100)}
-            onChange={(event) => setAllPullouts(Number(event.target.value) / 100)}
-          />
-        </label>
+          onChange={(event) => setAllPullouts(Number(event.target.value) / 100)}
+        />
+      </label>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs"
+          onClick={() => {
+            const doc = exportPdfBlueprint({ ...snapshot, previewDataUrl: captureViewportPng() });
+            doc.save('klickregal-bauplan.pdf');
+          }}
+        >
+          PDF-Bauplan
+        </button>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs"
+          onClick={() => downloadTextFile('klickregal-stueckliste.csv', exportBomCsv(snapshot), 'text/csv;charset=utf-8')}
+        >
+          CSV-Stückliste
+        </button>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs"
+          onClick={() => {
+            const url = encodeConfigToUrl(config, window.location.href);
+            window.history.replaceState(null, '', url);
+            void navigator.clipboard.writeText(url).then(
+              () => onNotify('Link kopiert.'),
+              () => onNotify('Link steht in der Adresszeile.'),
+            );
+          }}
+        >
+          Link kopieren
+        </button>
+        <button
+          type="button"
+          className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs"
+          onClick={() => downloadTextFile('klickregal.json', JSON.stringify(config, null, 2), 'application/json')}
+        >
+          JSON speichern
+        </button>
+        <button type="button" className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs" onClick={() => fileRef.current?.click()}>
+          JSON laden
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (!file) {
+              return;
+            }
+            void file.text().then((text) => {
+              onNotify(importConfig(text) ? 'JSON geladen.' : 'Die JSON-Datei ist ungültig.');
+            });
+          }}
+        />
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-800">
