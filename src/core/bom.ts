@@ -272,6 +272,10 @@ export function generateBom(
     const part = getHardware(item.catalogId);
     return sum + unitPrice(item.catalogId, part.priceEur, customPrices);
   }, 0);
+  const euroboxPrice = geometry.euroboxes.reduce(
+    (sum, box) => sum + unitPrice(box.boxId, null, customPrices),
+    0,
+  );
 
   const panelWeight = panels.reduce((sum, group) => sum + group.weightKg, 0);
   const accessoryWeight = geometry.accessories.reduce((sum, item) => {
@@ -298,6 +302,6 @@ export function generateBom(
     euroboxCount: geometry.euroboxes.length,
     accessoryCount: geometry.accessories.length,
     totalWeightKg: netAluWeightKg + panelWeight + accessoryWeight,
-    totalPriceEur: profilePrice + panelPrice + hardwarePrice + slidePrice + accessoryPrice,
+    totalPriceEur: profilePrice + panelPrice + hardwarePrice + slidePrice + accessoryPrice + euroboxPrice,
   };
 }

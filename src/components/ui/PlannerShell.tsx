@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { BaysLevelsTab } from '@/components/ui/BaysLevelsTab';
+import { BomPanel } from '@/components/ui/BomPanel';
+import { CuttingPlanView } from '@/components/ui/CuttingPlanView';
 import { PanelsAccessoriesTab } from '@/components/ui/PanelsAccessoriesTab';
 import { RoomSystemTab } from '@/components/ui/RoomSystemTab';
 import { TopToolbar } from '@/components/ui/TopToolbar';
@@ -11,7 +13,8 @@ import { redoPlanner, undoPlanner, useCabinetDerived } from '@/store/usePlannerS
 export function PlannerShell() {
   const [tab, setTab] = useState<'room' | 'bays' | 'panels'>('room');
   const [drawer, setDrawer] = useState(false);
-  const { bom, cuttingPlan, collisions } = useCabinetDerived();
+  const [drawerTab, setDrawerTab] = useState<'bom' | 'cutting'>('bom');
+  const { collisions } = useCabinetDerived();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -78,18 +81,27 @@ export function PlannerShell() {
             </div>
           </main>
           {drawer ? (
-            <section className="h-48 shrink-0 overflow-auto border-t border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-semibold">Stückliste und Schnittplan</h2>
-              <p className="mt-2 text-sm text-slate-700">
-                {bom.profilePieceCount} Profile, {bom.netAluLengthMm.toFixed(0)} mm netto, {bom.totalWeightKg.toFixed(1)} kg,{' '}
-                {bom.totalPriceEur.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-              </p>
-              <p className="mt-1 text-sm text-slate-700">
-                Zuschnitt {cuttingPlan.stockLengthMm} mm: {cuttingPlan.barCount} Stangen, {cuttingPlan.wastePercent.toFixed(1)} % Verschnitt
-              </p>
-              <p className="mt-1 text-sm text-slate-700">
-                {collisions.filter((issue) => issue.severity === 'error').length} Kollisionsfehler
-              </p>
+            <section className="flex h-[min(48vh,460px)] min-h-64 shrink-0 flex-col border-t border-slate-200 bg-white">
+              <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3">
+                <button
+                  type="button"
+                  className={`h-9 text-sm ${drawerTab === 'bom' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
+                  onClick={() => setDrawerTab('bom')}
+                >
+                  Stückliste
+                </button>
+                <button
+                  type="button"
+                  className={`h-9 text-sm ${drawerTab === 'cutting' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
+                  onClick={() => setDrawerTab('cutting')}
+                >
+                  Schnittplan
+                </button>
+                <span className="ml-auto text-xs text-slate-500">
+                  {collisions.filter((issue) => issue.severity === 'error').length} Kollisionsfehler
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto">{drawerTab === 'bom' ? <BomPanel /> : <CuttingPlanView />}</div>
             </section>
           ) : null}
         </div>
