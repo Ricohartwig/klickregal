@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { CabinetGeometryResult } from '@/core/geometry';
+import { profileOriginMm } from '@/components/viewport/profilePlacement';
 import type { ProfileSeriesId } from '@/core/schema';
 import type { StaticStatus, StaticsReport } from '@/core/statics';
 import { usePlannerStore } from '@/store/usePlannerStore';
@@ -169,7 +170,6 @@ function ProfileSeriesInstances({
     const quaternion = new THREE.Quaternion();
     const scale = new THREE.Vector3();
     const matrix = new THREE.Matrix4();
-    const section = SERIES_SECTION[series].sizeMm;
     entries.forEach((entry, slot) => {
       const { part, index } = entry;
       const euler = new THREE.Euler(
@@ -178,8 +178,8 @@ function ProfileSeriesInstances({
         THREE.MathUtils.degToRad(part.rotation.z),
       );
       quaternion.setFromEuler(euler);
-      const origin = exploded(part.position.x, part.position.y, part.position.z, geometry.boundingBox, explosionFactor);
-      origin.add(new THREE.Vector3(0, (section * MM) / 2, (section * MM) / 2).applyQuaternion(quaternion));
+      const centered = profileOriginMm(part.position, part.rotation, SERIES_SECTION[series].sizeMm);
+      const origin = exploded(centered.x, centered.y, centered.z, geometry.boundingBox, explosionFactor);
       scale.set(part.lengthMm / 1000, 1, 1);
       matrix.compose(origin, quaternion, scale);
       mesh.setMatrixAt(slot, matrix);

@@ -7,6 +7,7 @@ import type { CollisionIssue } from '@/core/collision';
 import type { CabinetGeometryResult, ProfilePart } from '@/core/geometry';
 import { EuroboxMesh } from '@/components/viewport/EuroboxMesh';
 import { createUnitProfileGeometry } from '@/components/viewport/ProfileMesh';
+import { profileOriginMm } from '@/components/viewport/profilePlacement';
 import type { ProfileSeriesId } from '@/core/schema';
 import { usePlannerStore } from '@/store/usePlannerStore';
 
@@ -97,8 +98,8 @@ function PulloutGroup({
           THREE.MathUtils.degToRad(part.rotation.y),
           THREE.MathUtils.degToRad(part.rotation.z),
         );
-        const origin = exploded(part.position.x, part.position.y, part.position.z, geometry.boundingBox, explosionFactor);
-        origin.add(new THREE.Vector3(0, (section * MM) / 2, (section * MM) / 2).applyEuler(euler));
+        const centered = profileOriginMm(part.position, part.rotation, section);
+        const origin = exploded(centered.x, centered.y, centered.z, geometry.boundingBox, explosionFactor);
         return (
           <mesh
             key={`${part.partCode}-${index}`}

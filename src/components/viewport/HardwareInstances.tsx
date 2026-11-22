@@ -64,14 +64,19 @@ function handleGeometry(): THREE.ExtrudeGeometry {
   ) as THREE.ExtrudeGeometry;
 }
 
+const CLAMP_DISC_MM = 11;
+
 function spanntellerGeometry(): THREE.BufferGeometry {
-  const disc = new THREE.CylinderGeometry((48 * MM) / 2, (48 * MM) / 2, 11 * MM, 28);
-  const rod = new THREE.CylinderGeometry(4 * MM, 4 * MM, 80 * MM, 12);
-  rod.translate(0, 34 * MM, 0);
+  const discH = CLAMP_DISC_MM * MM;
+  const rodH = 80 * MM;
+  const disc = new THREE.CylinderGeometry((48 * MM) / 2, (48 * MM) / 2, discH, 28);
+  disc.translate(0, discH / 2, 0);
+  const rod = new THREE.CylinderGeometry(4 * MM, 4 * MM, rodH, 12);
+  rod.translate(0, discH + rodH / 2, 0);
   const merged = mergeGeometries([disc, rod], false);
   disc.dispose();
   rod.dispose();
-  return centerGeometry(merged ?? new THREE.CylinderGeometry((48 * MM) / 2, (48 * MM) / 2, 11 * MM, 28));
+  return merged ?? new THREE.CylinderGeometry((48 * MM) / 2, (48 * MM) / 2, discH, 28);
 }
 
 function boxGeometry(xMm: number, yMm: number, zMm: number): THREE.BoxGeometry {
@@ -214,19 +219,36 @@ export function HardwareInstances({
       exploded(part.position.x, part.position.y, part.position.z, geometry.boundingBox, explosionFactor);
     const ofKind = (kind: HardwareKind) =>
       geometry.hardware.filter((part) => part.kind === kind).map((part) => pointMatrix(at(part)));
+    const clamps = geometry.hardware
+      .filter((part) => part.kind === 'clamp')
+      .map((part) => {
+        const position = at(part);
+        const top = part.position.y > geometry.boundingBox.heightMm / 2;
+        if (top) {
+          position.y += CLAMP_DISC_MM * MM;
+        }
+        return pointMatrix(position, top ? new THREE.Euler(Math.PI, 0, 0) : undefined);
+      });
     const slides = geometry.slides.map((part) => {
-      const rotation =
-        part.axis === 'z' ? new THREE.Euler(0, -Math.PI / 2, 0) : new THREE.Euler(0, 0, 0);
+      const position = at(part);
+      const alongZ = part.axis === 'z';
+      if (alongZ) {
+        position.y += (part.heightMm * MM) / 2;
+        position.z += (part.lengthMm * MM) / 2;
+      } else {
+        position.x += (part.lengthMm * MM) / 2;
+        position.y += (part.heightMm * MM) / 2;
+      }
       return pointMatrix(
-        at(part),
-        rotation,
+        position,
+        alongZ ? new THREE.Euler(0, -Math.PI / 2, 0) : undefined,
         new THREE.Vector3(part.lengthMm * MM, part.heightMm * MM, part.thicknessMm * MM),
       );
     });
     return {
       corner: ofKind('corner_bracket'),
       inside: explosionFactor > 0 ? ofKind('inside_bracket') : [],
-      clamp: ofKind('clamp'),
+      clamp: clamps,
       foot: ofKind('foot_plate'),
       cap: ofKind('end_cap'),
       latch: geometry.accessories
