@@ -224,9 +224,6 @@ export function HardwareInstances({
       .map((part) => {
         const position = at(part);
         const top = part.position.y > geometry.boundingBox.heightMm / 2;
-        if (top) {
-          position.y += CLAMP_DISC_MM * MM;
-        }
         return pointMatrix(position, top ? new THREE.Euler(Math.PI, 0, 0) : undefined);
       });
     const slides = geometry.slides.map((part) => {

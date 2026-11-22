@@ -49,6 +49,8 @@ export function RoomSystemTab() {
   const setSeries = usePlannerStore((state) => state.setSeries);
   const setFinish = usePlannerStore((state) => state.setFinish);
   const setFootType = usePlannerStore((state) => state.setFootType);
+  const setClampBottomMm = usePlannerStore((state) => state.setClampBottomMm);
+  const setClampTopMm = usePlannerStore((state) => state.setClampTopMm);
   const showRoomEnvelope = usePlannerStore((state) => state.showRoomEnvelope);
   const setView = usePlannerStore((state) => state.setView);
   const seriesInfo = SERIES.find((entry) => entry.id === config.series);
@@ -142,6 +144,34 @@ export function RoomSystemTab() {
             ))}
           </select>
         </label>
+        {config.footType !== 'foot_plates' ? (
+          <label className="flex flex-col gap-1 text-xs text-slate-600">
+            Spannteller unten mm
+            <input
+              type="number"
+              min={11}
+              max={80}
+              className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
+              value={config.clampBottomMm}
+              onChange={(event) => setClampBottomMm(Number(event.target.value))}
+            />
+            <span>Boden bis Pfosten. 11 mm liegt der Teller an, 80 mm ist das ganze Gewinde.</span>
+          </label>
+        ) : null}
+        {config.footType === 'clamp_both' ? (
+          <label className="flex flex-col gap-1 text-xs text-slate-600">
+            Spannteller oben mm
+            <input
+              type="number"
+              min={11}
+              max={80}
+              className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
+              value={config.clampTopMm}
+              onChange={(event) => setClampTopMm(Number(event.target.value))}
+            />
+            <span>Pfosten bis Decke. Gleicher Bereich wie unten.</span>
+          </label>
+        ) : null}
       </section>
     </div>
   );

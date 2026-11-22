@@ -37,6 +37,8 @@ export interface PlannerState {
   setSeries: (series: ProfileSeriesId) => void;
   setFinish: (finish: CabinetConfig['finish']) => void;
   setFootType: (footType: FootType) => void;
+  setClampBottomMm: (mm: number) => void;
+  setClampTopMm: (mm: number) => void;
   addBay: () => void;
   duplicateBay: (bayId: string) => void;
   removeBay: (bayId: string) => void;
@@ -156,6 +158,10 @@ export const usePlannerStore = create<PlannerState>()(
       setSeries: (series) => set({ config: withSeriesSlides(get().config, series) }),
       setFinish: (finish) => set({ config: { ...get().config, finish } }),
       setFootType: (footType) => set({ config: { ...get().config, footType } }),
+      setClampBottomMm: (value) =>
+        set({ config: { ...get().config, clampBottomMm: Math.min(80, Math.max(11, value)) } }),
+      setClampTopMm: (value) =>
+        set({ config: { ...get().config, clampTopMm: Math.min(80, Math.max(11, value)) } }),
       addBay: () => {
         const config = get().config;
         if (config.bays.length >= MAX_BAYS) {

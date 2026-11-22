@@ -165,9 +165,10 @@ export function TopToolbar({
             type="range"
             min={0}
             max={100}
+            aria-label="Auszüge, 100 Prozent ist die Nennlänge minus Überstand"
             value={Math.round(globalPulloutProgress * 100)}
-          onChange={(event) => setAllPullouts(Number(event.target.value) / 100)}
-        />
+            onChange={(event) => setAllPullouts(Number(event.target.value) / 100)}
+          />
       </label>
         <button
           type="button"

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { generateCabinetGeometry, type PartCode } from '../geometry';
+import { generateCabinetGeometry, maxPulloutTravelMm, postSpan, type PartCode } from '../geometry';
 import { cabinetConfigSchema, type CabinetConfig, type CabinetConfigInput } from '../schema';
 
 function cabinet(overrides: {
@@ -65,6 +65,19 @@ describe('generateCabinetGeometry', () => {
       }),
     );
     expect(twoBays.profiles.filter((part) => part.partCode === 'Nr.1')).toHaveLength(6);
+  });
+
+  it('stellt Spannteller oben und unten getrennt ein und begrenzt den Auszug', () => {
+    const adjusted = cabinetConfigSchema.parse({
+      ...cabinet({ heightMm: 2000 }),
+      clampBottomMm: 20,
+      clampTopMm: 70,
+    });
+    const span = postSpan(adjusted);
+    expect(span.startMm).toBe(20);
+    expect(span.lengthMm).toBe(1910);
+    expect(span.topMm).toBe(1930);
+    expect(maxPulloutTravelMm(1200, 17, 30)).toBe(1153);
   });
 
   it('cuts 30x30 pull-out profiles including the 900 mm side-frame exception', () => {

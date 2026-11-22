@@ -26,6 +26,7 @@ function PulloutGroup({
   bayId,
   profiles,
   slideLengthMm,
+  axis,
   geometry,
   collisions,
   explosionFactor,
@@ -34,6 +35,7 @@ function PulloutGroup({
   bayId: string | null;
   profiles: ProfilePart[];
   slideLengthMm: number;
+  axis: 'x' | 'z';
   geometry: CabinetGeometryResult;
   collisions: CollisionIssue[];
   explosionFactor: number;
@@ -74,7 +76,8 @@ function PulloutGroup({
     }
     progress.current += Math.sign(gap) * Math.min(Math.abs(gap), delta * 1.6);
     if (group.current) {
-      group.current.position.z = progress.current * slideLengthMm * MM;
+      group.current.position.x = axis === 'x' ? progress.current * slideLengthMm * MM : 0;
+      group.current.position.z = axis === 'z' ? progress.current * slideLengthMm * MM : 0;
     }
     invalidate();
   });
@@ -150,13 +153,18 @@ export function PulloutAssembly({
     <group>
       {[...levels.entries()].map(([levelId, profiles]) => {
         const slide = geometry.slides.find((part) => part.levelId === levelId);
+        const travelMm = slide
+          ? Math.max(0, slide.lengthMm - slide.innerOverhangMm - slide.outerOverhangMm)
+          : 0;
+        const axis = slide?.axis ?? 'z';
         return (
           <PulloutGroup
             key={levelId}
             levelId={levelId}
             bayId={profiles[0]?.bayId ?? null}
             profiles={profiles}
-            slideLengthMm={slide?.lengthMm ?? 600}
+            slideLengthMm={travelMm}
+            axis={axis}
             geometry={geometry}
             collisions={collisions}
             explosionFactor={explosionFactor}

@@ -1,4 +1,5 @@
-import { getEurobox, getProfileSeries } from './catalog';
+import { getEurobox, getProfileSeries, getSlideForSeries } from './catalog';
+import { postSpan } from './geometry';
 import type { CabinetGeometryResult } from './geometry';
 import type { CabinetConfig, Level } from './schema';
 
@@ -27,12 +28,9 @@ export interface CollisionIssue {
 
 const GRIP_MM = 15;
 const LEVEL_GAP_MM = 20;
-const POST_CLEARANCE_MM = 50;
 
 function postTopMm(config: CabinetConfig): number {
-  const length =
-    config.footType === 'clamp_both' ? config.room.heightMm - 100 : config.room.heightMm - 50;
-  return POST_CLEARANCE_MM + length;
+  return postSpan(config).topMm;
 }
 
 function issue(
@@ -220,19 +218,21 @@ function checkSlides(config: CabinetConfig, geometry: CabinetGeometryResult): Co
           ),
         );
       }
+      const slide = getSlideForSeries(config.series);
       const sideFrame = geometry.profiles.find(
         (part) => part.partCode === 'Nr.3' && part.levelId === level.id,
       );
-      if (sideFrame && slideLength > sideFrame.lengthMm) {
+      const allowedMm = sideFrame ? sideFrame.lengthMm + slide.innerOverhangMm + slide.outerOverhangMm : undefined;
+      if (sideFrame && allowedMm !== undefined && slideLength > allowedMm) {
         found.push(
           issue(
             'slide_depth',
             'error',
-            `Auszugsschiene ${slideLength} mm ist länger als der Seitenrahmen ${sideFrame.lengthMm} mm.`,
+            `Auszugsschiene ${slideLength} mm ist länger als der Seitenrahmen ${sideFrame.lengthMm} mm plus Überstand ${slide.innerOverhangMm + slide.outerOverhangMm} mm.`,
             {
               bayId: bay.id,
               levelId: level.id,
-              availableMm: sideFrame.lengthMm,
+              availableMm: allowedMm,
               requiredMm: slideLength,
             },
           ),

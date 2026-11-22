@@ -1,6 +1,7 @@
 'use client';
 
-import { getSlideForSeries } from '@/core/catalog';
+import { getProfileSeries, getSlideForSeries } from '@/core/catalog';
+import { postSpan } from '@/core/geometry';
 import type { BayMode, LevelType } from '@/core/schema';
 import { EuroboxSelector } from '@/components/ui/EuroboxSelector';
 import { useCabinetDerived, usePlannerStore } from '@/store/usePlannerStore';
@@ -48,6 +49,7 @@ export function BaysLevelsTab() {
   const { statics, collisions } = useCabinetDerived();
   const bay = config.bays.find((entry) => entry.id === selectedBayId) ?? config.bays[0];
   const slides = getSlideForSeries(config.series).lengthsMm;
+  const shelfLimit = Math.max(0, postSpan(config).topMm - getProfileSeries(config.series).sectionMm);
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -150,15 +152,15 @@ export function BaysLevelsTab() {
                   <input
                     type="range"
                     min={0}
-                    max={config.room.heightMm}
+                    max={Math.max(0, shelfLimit)}
                     value={level.yMm}
-                    onChange={(event) => updateLevel(bay.id, level.id, { yMm: Number(event.target.value) })}
+                    onChange={(event) => updateLevel(bay.id, level.id, { yMm: Math.min(shelfLimit, Number(event.target.value)) })}
                   />
                   <input
                     type="number"
                     className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
                     value={level.yMm}
-                    onChange={(event) => updateLevel(bay.id, level.id, { yMm: Math.max(0, Number(event.target.value)) })}
+                    onChange={(event) => updateLevel(bay.id, level.id, { yMm: Math.min(Math.max(0, shelfLimit), Math.max(0, Number(event.target.value))) })}
                   />
                 </label>
                 <label className="mt-2 flex flex-col gap-1 text-xs text-slate-600">

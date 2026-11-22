@@ -112,6 +112,8 @@ export const cabinetConfigSchema = z.object({
   series: profileSeriesIdSchema,
   finish: finishSchema.default('silver'),
   footType: footTypeSchema,
+  clampBottomMm: z.number().min(11).max(80).default(50),
+  clampTopMm: z.number().min(11).max(80).default(50),
   depthMm: z.number().positive(),
   bays: z.array(baySchema).min(1).max(5),
   accessories: z.array(cabinetAccessorySchema).default([]),

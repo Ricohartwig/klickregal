@@ -137,19 +137,36 @@ export interface CabinetGeometryResult {
   boundingBox: BoundingBox;
 }
 
-const POST_CLEARANCE_MM = 50;
 const FALLTHROUGH_MM = 35;
 const HINGE_PAIR_MAX_HEIGHT_MM = 1000;
+const CLAMP_DISC_MM = 11;
+const DEFAULT_CLAMP_MM = 50;
+
+export function clampGaps(config: CabinetConfig): { bottomMm: number; topMm: number } {
+  if (config.footType === 'foot_plates') {
+    return { bottomMm: DEFAULT_CLAMP_MM, topMm: 0 };
+  }
+  const bottomMm = config.clampBottomMm ?? DEFAULT_CLAMP_MM;
+  const topMm = config.footType === 'clamp_both' ? (config.clampTopMm ?? DEFAULT_CLAMP_MM) : 0;
+  return { bottomMm, topMm };
+}
+
+export function postSpan(config: CabinetConfig): { startMm: number; lengthMm: number; topMm: number } {
+  const { bottomMm, topMm } = clampGaps(config);
+  const lengthMm = mm(Math.max(config.room.heightMm - bottomMm - topMm, getProfileSeries(config.series).sectionMm));
+  return { startMm: bottomMm, lengthMm, topMm: mm(bottomMm + lengthMm) };
+}
+
+export function maxPulloutTravelMm(lengthMm: number, innerOverhangMm: number, outerOverhangMm: number): number {
+  return Math.max(0, lengthMm - innerOverhangMm - outerOverhangMm);
+}
 
 function mm(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
 function postLength(config: CabinetConfig): number {
-  if (config.footType === 'clamp_both') {
-    return mm(config.room.heightMm - 100);
-  }
-  return mm(config.room.heightMm - 50);
+  return postSpan(config).lengthMm;
 }
 
 function crossBraceLength(config: CabinetConfig, bay: Bay, level: Level): number {
@@ -418,7 +435,7 @@ function addPullout(
   const fixedOuter = l4 + 2 * p;
   const fixedStart = clearOrigin + (clearSpan - fixedOuter) / 2;
   const movingStart = fixedStart + p + play + slide.thicknessMm;
-  const travel = level.openProgress * slideLengthFor(config.series, level);
+  const travel = level.openProgress * maxPulloutTravelMm(slideLengthFor(config.series, level), slide.innerOverhangMm, slide.outerOverhangMm);
   const yRail = level.yMm;
 
   const at = (across: number, along: number, moving: boolean): Vec3 => {
@@ -628,7 +645,8 @@ function addLevel(
   const alongLength = level.orientation === 'crosswise' ? 'x' : 'z';
   if (level.type === 'pullout') {
     const outer = addPullout(build, config, bay, level, clearX, clearZ, clearW, clearD);
-    const travel = level.openProgress * slideLengthFor(config.series, level);
+    const slide = getSlideForSeries(config.series);
+    const travel = level.openProgress * maxPulloutTravelMm(slideLengthFor(config.series, level), slide.innerOverhangMm, slide.outerOverhangMm);
     const inset = p - FALLTHROUGH_MM / 2;
     placeBoxes(
       build,
@@ -685,7 +703,8 @@ function addCarcass(
   const p = getProfileSeries(config.series).sectionMm;
   const materials = bay.panels;
   const height = panelSpan(postLen, insertion);
-  const y = POST_CLEARANCE_MM - (insertion - 1);
+  const span = postSpan(config);
+  const y = span.startMm - (insertion - 1);
 
   if (materials.left !== 'none') {
     const material = getPanelMaterial(materials.left);
@@ -737,7 +756,7 @@ function addCarcass(
       materialId: material.id,
       position: {
         x: clearX - (insertion - 1),
-        y: POST_CLEARANCE_MM + postLen - material.thicknessMm,
+        y: span.startMm + postLen - material.thicknessMm,
         z: clearZ - (insertion - 1),
       },
       widthMm: panelSpan(clearW, insertion),
@@ -780,7 +799,7 @@ function addCarcass(
       materialId: bay.door.material,
       position: {
         x: mm(leaf.x),
-        y: POST_CLEARANCE_MM + gap,
+        y: span.startMm + gap,
         z: mm(config.depthMm - Math.max(material.thicknessMm, 1)),
       },
       widthMm: leafWidth,
@@ -802,7 +821,7 @@ function addCarcass(
         catalogId: 'hinge_180_plastic',
         position: {
           x: leaf.hinge === 'left' ? leaf.x : leaf.x + leafWidth,
-          y: POST_CLEARANCE_MM + gap + hingeY,
+          y: span.startMm + gap + hingeY,
           z: config.depthMm,
         },
         bayId: bay.id,
@@ -817,7 +836,7 @@ function addCarcass(
     catalogId: 'magnetic_catch',
     position: {
       x: bay.door.type === 'left' ? clearX + clearW - gap : clearX + clearW / 2,
-      y: POST_CLEARANCE_MM + clearH / 2,
+      y: span.startMm + clearH / 2,
       z: config.depthMm,
     },
     bayId: bay.id,
@@ -831,7 +850,7 @@ function addCarcass(
       catalogId: 'handle_plastic',
       position: {
         x: handleLeaf.x + leafWidth / 2,
-        y: POST_CLEARANCE_MM + gap + leafHeight / 2,
+        y: span.startMm + gap + leafHeight / 2,
         z: config.depthMm,
       },
       bayId: bay.id,
@@ -849,6 +868,7 @@ function addPosts(
   depthMm: number,
 ): void {
   const p = getProfileSeries(config.series).sectionMm;
+  const span = postSpan(config);
   const frontZ = depthMm - p;
   const series = getProfileSeries(config.series);
   const clampId = compatibleHardwareId(config.series, 'spannteller_m8x80');
@@ -859,19 +879,19 @@ function addPosts(
     for (const z of [0, frontZ]) {
       addProfile(build, config, {
         partCode: 'Nr.1',
-        position: { x, y: POST_CLEARANCE_MM, z },
+        position: { x, y: span.startMm, z },
         rotation: rotationForAxis('y'),
         lengthMm: postLen,
         bayId: null,
         levelId: null,
         isMoving: false,
       });
-      const center = { x: x + p / 2, y: POST_CLEARANCE_MM, z: z + p / 2 };
+      const center = { x: x + p / 2, y: span.startMm, z: z + p / 2 };
       if (config.footType === 'foot_plates') {
         build.hardware.push({
           kind: 'foot_plate',
           catalogId: footId,
-          position: { ...center, y: POST_CLEARANCE_MM - 2.5 },
+          position: { ...center, y: span.startMm - 2.5 },
           bayId: null,
           levelId: null,
           isMoving: false,
@@ -890,7 +910,7 @@ function addPosts(
         build.hardware.push({
           kind: 'clamp',
           catalogId: clampId,
-          position: { ...center, y: POST_CLEARANCE_MM + postLen },
+          position: { ...center, y: config.room.heightMm },
           bayId: null,
           levelId: null,
           isMoving: false,
@@ -899,7 +919,7 @@ function addPosts(
         build.hardware.push({
           kind: 'end_cap',
           catalogId: capId,
-          position: { ...center, y: POST_CLEARANCE_MM + postLen },
+          position: { ...center, y: span.startMm + postLen },
           bayId: null,
           levelId: null,
           isMoving: false,
