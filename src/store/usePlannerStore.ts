@@ -117,18 +117,6 @@ function selectFirst(config: CabinetConfig): { selectedBayId: string | null; sel
   };
 }
 
-function applyGlobalPullout(config: CabinetConfig, progress: number): CabinetConfig {
-  return {
-    ...config,
-    bays: config.bays.map((bay) => ({
-      ...bay,
-      levels: bay.levels.map((level) =>
-        level.type === 'pullout' ? { ...level, openProgress: progress } : level,
-      ),
-    })),
-  };
-}
-
 export const usePlannerStore = create<PlannerState>()(
   temporal(
     (set, get) => ({
@@ -418,18 +406,16 @@ export function redoPlanner(): void {
 
 export function useCabinetDerived() {
   const config = usePlannerStore((state) => state.config);
-  const globalPulloutProgress = usePlannerStore((state) => state.globalPulloutProgress);
   const stockLengthMm = usePlannerStore((state) => state.stockLengthMm);
   const customPrices = usePlannerStore((state) => state.customPrices);
   const useCustomPrices = usePlannerStore((state) => state.useCustomPrices);
 
   return useMemo(() => {
-    const effective = applyGlobalPullout(config, globalPulloutProgress);
-    const geometry = generateCabinetGeometry(effective);
-    const bom = generateBom(effective, geometry, useCustomPrices ? customPrices : undefined);
-    const collisions = checkCollisions(effective, geometry);
-    const statics = evaluateStatics(effective, geometry);
+    const geometry = generateCabinetGeometry(config);
+    const bom = generateBom(config, geometry, useCustomPrices ? customPrices : undefined);
+    const collisions = checkCollisions(config, geometry);
+    const statics = evaluateStatics(config, geometry);
     const cuttingPlan = optimizeCuttingStock(bom, stockLengthMm);
-    return { config: effective, geometry, bom, collisions, statics, cuttingPlan };
-  }, [config, globalPulloutProgress, stockLengthMm, customPrices, useCustomPrices]);
+    return { config, geometry, bom, collisions, statics, cuttingPlan };
+  }, [config, stockLengthMm, customPrices, useCustomPrices]);
 }
