@@ -46,6 +46,7 @@ export function BaysLevelsTab() {
   const addLevel = usePlannerStore((state) => state.addLevel);
   const removeLevel = usePlannerStore((state) => state.removeLevel);
   const updateLevel = usePlannerStore((state) => state.updateLevel);
+  const fillFittingEuroboxes = usePlannerStore((state) => state.fillFittingEuroboxes);
   const { statics, collisions } = useCabinetDerived();
   const bay = config.bays.find((entry) => entry.id === selectedBayId) ?? config.bays[0];
   const slides = getSlideForSeries(config.series).lengthsMm;
@@ -56,9 +57,14 @@ export function BaysLevelsTab() {
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-950">Felder</h2>
-          <button type="button" className="h-8 rounded-md bg-slate-900 px-2 text-xs text-white" onClick={() => addBay()}>
-            Feld hinzufügen
-          </button>
+          <div className="flex gap-1">
+            <button type="button" className="h-8 rounded-md border border-slate-300 px-2 text-xs" onClick={() => fillFittingEuroboxes()}>
+              Passende Euroboxen
+            </button>
+            <button type="button" className="h-8 rounded-md bg-slate-900 px-2 text-xs text-white" onClick={() => addBay()}>
+              Feld
+            </button>
+          </div>
         </div>
         {config.bays.map((entry, index) => {
           const active = entry.id === bay?.id;

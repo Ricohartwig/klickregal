@@ -1,28 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { AccessoryPosition, AccessoryType, DoorType, PanelMaterialId } from '@/core/schema';
+import type { AccessoryPosition, AccessoryType } from '@/core/schema';
 import { usePlannerStore } from '@/store/usePlannerStore';
-
-const MATERIALS: Array<{ id: PanelMaterialId; label: string }> = [
-  { id: 'none', label: 'Offen' },
-  { id: 'dibond_anthracite', label: 'Alu-Dibond Anthrazit 3 mm' },
-  { id: 'birch_plywood', label: 'Birke Multiplex 4 mm' },
-  { id: 'acrylic_clear', label: 'Acrylglas 4 mm' },
-];
-
-const SIDES = [
-  { key: 'left' as const, label: 'Linke Wand' },
-  { key: 'right' as const, label: 'Rechte Wand' },
-  { key: 'back' as const, label: 'Rückwand' },
-  { key: 'top' as const, label: 'Deckel' },
-];
-
-const DOOR_TYPES: Array<{ id: DoorType; label: string }> = [
-  { id: 'left', label: 'Links' },
-  { id: 'right', label: 'Rechts' },
-  { id: 'double', label: 'Doppeltür' },
-];
 
 const ACCESSORIES: Array<{ id: AccessoryType; label: string }> = [
   { id: 'coat_hook', label: 'Klappkleiderhaken' },
@@ -46,7 +26,6 @@ const POSITION_LABEL = Object.fromEntries(POSITIONS.map((entry) => [entry.id, en
 export function PanelsAccessoriesTab() {
   const config = usePlannerStore((state) => state.config);
   const selectedBayId = usePlannerStore((state) => state.selectedBayId);
-  const updateBay = usePlannerStore((state) => state.updateBay);
   const addAccessory = usePlannerStore((state) => state.addAccessory);
   const removeAccessory = usePlannerStore((state) => state.removeAccessory);
   const setView = usePlannerStore((state) => state.setView);
@@ -58,8 +37,6 @@ export function PanelsAccessoriesTab() {
   if (!bay) {
     return null;
   }
-
-  const open = bay.door.openAngleDeg > 0;
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -77,108 +54,6 @@ export function PanelsAccessoriesTab() {
             </option>
           ))}
         </select>
-      </section>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-slate-950">Verkleidung</h2>
-        {SIDES.map((side) => (
-          <label key={side.key} className="flex flex-col gap-1 text-xs text-slate-600">
-            {side.label}
-            <select
-              className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
-              value={bay.panels[side.key]}
-              onChange={(event) =>
-                updateBay(bay.id, {
-                  panels: { ...bay.panels, [side.key]: event.target.value as PanelMaterialId },
-                })
-              }
-            >
-              {MATERIALS.map((material) => (
-                <option key={material.id} value={material.id}>
-                  {material.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-      </section>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-slate-950">Drehtür</h2>
-        <label className="flex items-center gap-2 text-sm text-slate-800">
-          <input
-            type="checkbox"
-            checked={bay.door.enabled}
-            onChange={(event) =>
-              updateBay(bay.id, {
-                door: {
-                  ...bay.door,
-                  enabled: event.target.checked,
-                  material:
-                    event.target.checked && bay.door.material === 'none' ? 'dibond_anthracite' : bay.door.material,
-                },
-              })
-            }
-          />
-          Tür aktiv
-        </label>
-        {bay.door.enabled ? (
-          <>
-            <label className="flex flex-col gap-1 text-xs text-slate-600">
-              Anschlag
-              <select
-                className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
-                value={bay.door.type}
-                onChange={(event) => updateBay(bay.id, { door: { ...bay.door, type: event.target.value as DoorType } })}
-              >
-                {DOOR_TYPES.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-slate-600">
-              Türmaterial
-              <select
-                className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
-                value={bay.door.material}
-                onChange={(event) =>
-                  updateBay(bay.id, { door: { ...bay.door, material: event.target.value as PanelMaterialId } })
-                }
-              >
-                {MATERIALS.map((material) => (
-                  <option key={material.id} value={material.id}>
-                    {material.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-slate-600">
-              Spaltmaß mm
-              <input
-                type="number"
-                min={0}
-                className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-950"
-                value={bay.door.gapMm}
-                onChange={(event) =>
-                  updateBay(bay.id, {
-                    door: { ...bay.door, gapMm: Math.max(0, Number(event.target.value) || 0) },
-                  })
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className="h-9 rounded-md bg-slate-900 text-sm text-white"
-              onClick={() =>
-                updateBay(bay.id, {
-                  door: { ...bay.door, openAngleDeg: open ? 0 : 110 },
-                })
-              }
-            >
-              {open ? 'Tür schließen' : 'Tür öffnen'}
-            </button>
-          </>
-        ) : null}
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-slate-950">Zubehör an Außenstehern</h2>

@@ -8,7 +8,8 @@ import { checkCollisions } from '@/core/collision';
 import { optimizeCuttingStock, type StockLengthMm } from '@/core/cuttingStock';
 import { generateCabinetGeometry } from '@/core/geometry';
 import { cabinetConfigSchema, type Bay, type CabinetAccessory, type CabinetConfig, type FootType, type Level, type LevelType, type ProfileSeriesId, type Room } from '@/core/schema';
-import { getSlideForSeries } from '@/core/catalog';
+import { getEurobox, getProfileSeries, getSlideForSeries } from '@/core/catalog';
+import { postSpan } from '@/core/geometry';
 import { evaluateStatics } from '@/core/statics';
 import { DEFAULT_PRESET_ID, PRESETS, type PresetId } from '@/store/presets';
 
@@ -47,6 +48,7 @@ export interface PlannerState {
   removeLevel: (bayId: string, levelId: string) => void;
   updateLevel: (bayId: string, levelId: string, patch: Partial<Omit<Level, 'id'>>) => void;
   autoFillEuroboxes: (bayId: string, levelId: string) => void;
+  fillFittingEuroboxes: () => void;
   toggleLevelPullout: (bayId: string, levelId: string) => void;
   setAllPullouts: (progress: number) => void;
   toggleDoor: (bayId: string) => void;
@@ -111,6 +113,35 @@ function withSeriesSlides(config: CabinetConfig, series: ProfileSeriesId): Cabin
   };
 }
 
+function fittingEuroboxes(config: CabinetConfig, bay: Bay, level: Level) {
+  if (level.type !== 'pullout' && level.type !== 'fixed_eurobox') {
+    return level.boxes;
+  }
+  const section = getProfileSeries(config.series).sectionMm;
+  const sorted = [...bay.levels].sort((a, b) => a.yMm - b.yMm);
+  const index = sorted.findIndex((entry) => entry.id === level.id);
+  const next = sorted[index + 1];
+  const available = next ? next.yMm - section - level.yMm : postSpan(config).topMm - section - level.yMm;
+  const catalog = (['GR-8', 'GR-7', 'GR-6', 'GR-5', 'GR-4', 'GR-3', 'GR-2', 'GR-1A', 'GR-1'] as const).map((id) => {
+    const box = getEurobox(id);
+    return { boxId: id, lengthMm: box.lengthMm, widthMm: box.widthMm, heightMm: box.heightMm };
+  });
+  const footprint = catalog.filter((box) => box.widthMm <= level.boxWidthMm && box.lengthMm <= level.boxLengthMm);
+  const choice = footprint.find((box) => box.heightMm + 15 <= available) ?? footprint[0];
+  if (!choice) {
+    return [];
+  }
+  const count = Math.max(1, Math.floor(level.boxLengthMm / choice.lengthMm));
+  const crosswise = level.orientation === 'crosswise';
+  return Array.from({ length: count }, (_, index) => ({
+    id: nextId('box'),
+    boxId: choice.boxId,
+    withLid: false,
+    xMm: crosswise ? index * choice.lengthMm : 0,
+    zMm: crosswise ? 0 : index * choice.lengthMm,
+  }));
+}
+
 function selectFirst(config: CabinetConfig): { selectedBayId: string | null; selectedLevelId: string | null } {
   const bay = config.bays[0];
   return {
@@ -124,7 +155,7 @@ export const usePlannerStore = create<PlannerState>()(
     (set, get) => ({
       config: PRESETS[DEFAULT_PRESET_ID],
       ...selectFirst(PRESETS[DEFAULT_PRESET_ID]),
-      showRoomEnvelope: false,
+      showRoomEnvelope: true,
       showDimensions: true,
       explosionFactor: 0,
       xrayMode: false,
@@ -308,39 +339,23 @@ export const usePlannerStore = create<PlannerState>()(
               }
               return {
                 ...bay,
-                levels: bay.levels.map((level) => {
-                  if (level.id !== levelId) {
-                    return level;
-                  }
-                  const candidates = [
-                    { boxId: 'GR-8' as const, lengthMm: 1200, widthMm: 400 },
-                    { boxId: 'GR-7' as const, lengthMm: 1200, widthMm: 400 },
-                    { boxId: 'GR-6' as const, lengthMm: 600, widthMm: 400 },
-                    { boxId: 'GR-5' as const, lengthMm: 600, widthMm: 400 },
-                    { boxId: 'GR-4' as const, lengthMm: 600, widthMm: 400 },
-                    { boxId: 'GR-3' as const, lengthMm: 400, widthMm: 300 },
-                    { boxId: 'GR-2' as const, lengthMm: 400, widthMm: 300 },
-                    { boxId: 'GR-1A' as const, lengthMm: 400, widthMm: 300 },
-                    { boxId: 'GR-1' as const, lengthMm: 400, widthMm: 300 },
-                  ].filter((box) => box.widthMm <= level.boxWidthMm && box.lengthMm <= level.boxLengthMm);
-                  const choice = candidates[0];
-                  if (!choice) {
-                    return { ...level, boxes: [] };
-                  }
-                  const count = Math.max(1, Math.floor(level.boxLengthMm / choice.lengthMm));
-                  return {
-                    ...level,
-                    boxes: Array.from({ length: count }, (_, index) => ({
-                      id: nextId('box'),
-                      boxId: choice.boxId,
-                      withLid: false,
-                      xMm: 0,
-                      zMm: index * choice.lengthMm,
-                    })),
-                  };
-                }),
+                levels: bay.levels.map((level) =>
+                  level.id === levelId ? { ...level, boxes: fittingEuroboxes(config, bay, level) } : level,
+                ),
               };
             }),
+          },
+        });
+      },
+      fillFittingEuroboxes: () => {
+        const config = get().config;
+        set({
+          config: {
+            ...config,
+            bays: config.bays.map((bay) => ({
+              ...bay,
+              levels: bay.levels.map((level) => ({ ...level, boxes: fittingEuroboxes(config, bay, level) })),
+            })),
           },
         });
       },

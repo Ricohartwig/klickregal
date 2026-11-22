@@ -22,8 +22,12 @@ export default function CabinetScene({ portal }: { portal: RefObject<HTMLDivElem
   const staticsOverlay = usePlannerStore((state) => state.staticsOverlay);
   const explosionFactor = usePlannerStore((state) => state.explosionFactor);
   const selectedBayId = usePlannerStore((state) => state.selectedBayId);
-  const centerX = (geometry.boundingBox.widthMm / 1000) / 2;
-  const centerZ = (geometry.boundingBox.depthMm / 1000) / 2;
+  const room = config.room;
+  const viewBounds = showRoomEnvelope
+    ? { widthMm: room.clearWidthMm, heightMm: room.heightMm, depthMm: room.depthMm }
+    : geometry.boundingBox;
+  const centerX = (viewBounds.widthMm / 1000) / 2;
+  const centerZ = (viewBounds.depthMm / 1000) / 2;
 
   return (
     <Canvas
@@ -68,7 +72,7 @@ export default function CabinetScene({ portal }: { portal: RefObject<HTMLDivElem
       />
       <PulloutAssembly geometry={geometry} collisions={collisions} explosionFactor={explosionFactor} />
       <HardwareInstances geometry={geometry} explosionFactor={explosionFactor} />
-      <PanelsAndDoors panels={geometry.panels} doors={geometry.doors} accessories={geometry.accessories} />
+      <PanelsAndDoors panels={[]} doors={[]} accessories={geometry.accessories.filter((item) => item.type === 'clothes_rail')} />
       <EuroboxMesh
         boxes={geometry.euroboxes.filter((box) => !box.isMoving)}
         collisions={collisions}
@@ -82,7 +86,7 @@ export default function CabinetScene({ portal }: { portal: RefObject<HTMLDivElem
         portal={portal}
       />
       <RoomEnvelope config={config} collisions={collisions} visible={showRoomEnvelope} />
-      <CameraRig bounds={geometry.boundingBox} />
+      <CameraRig bounds={viewBounds} />
     </Canvas>
   );
 }

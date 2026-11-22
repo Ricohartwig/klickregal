@@ -105,7 +105,7 @@ export function PlannerShell() {
               className={`px-1 py-2 text-[11px] leading-tight ${tab === 'panels' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
               onClick={() => setTab('panels')}
             >
-              Verkleidung, Türen & Zubehör
+              Zubehör
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">

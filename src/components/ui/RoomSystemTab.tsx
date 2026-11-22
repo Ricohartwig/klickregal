@@ -1,6 +1,7 @@
 'use client';
 
-import { usePlannerStore } from '@/store/usePlannerStore';
+import { postSpan } from '@/core/geometry';
+import { useCabinetDerived, usePlannerStore } from '@/store/usePlannerStore';
 import type { FootType, ProfileSeriesId } from '@/core/schema';
 
 const SERIES: Array<{ id: ProfileSeriesId; label: string; detail: string }> = [
@@ -54,7 +55,11 @@ export function RoomSystemTab() {
   const showRoomEnvelope = usePlannerStore((state) => state.showRoomEnvelope);
   const setView = usePlannerStore((state) => state.setView);
   const seriesInfo = SERIES.find((entry) => entry.id === config.series);
-  const door = config.room.doorOpening;
+  const { geometry } = useCabinetDerived();
+  const cabinetTop = postSpan(config).topMm;
+  const freeWidth = Math.round(config.room.clearWidthMm - geometry.boundingBox.widthMm);
+  const freeDepth = Math.round(config.room.depthMm - geometry.boundingBox.depthMm);
+  const freeHeight = Math.round(config.room.heightMm - cabinetTop);
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -65,39 +70,16 @@ export function RoomSystemTab() {
           <NumberField label="Höhe mm" value={config.room.heightMm} onChange={(heightMm) => updateRoom({ heightMm })} />
           <NumberField label="Tiefe mm" value={config.room.depthMm} onChange={(depthMm) => updateRoom({ depthMm })} />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-800">
-          <input
-            type="checkbox"
-            checked={Boolean(door)}
-            onChange={(event) =>
-              updateRoom({
-                doorOpening: event.target.checked ? { widthMm: 900, heightMm: 1900 } : undefined,
-              })
-            }
-          />
-          Türöffnung
-        </label>
-        {door ? (
-          <div className="grid grid-cols-2 gap-2">
-            <NumberField
-              label="Türbreite mm"
-              value={door.widthMm}
-              onChange={(widthMm) => updateRoom({ doorOpening: { ...door, widthMm } })}
-            />
-            <NumberField
-              label="Türhöhe mm"
-              value={door.heightMm}
-              onChange={(heightMm) => updateRoom({ doorOpening: { ...door, heightMm } })}
-            />
-          </div>
-        ) : null}
+        <p className="text-xs leading-5 text-slate-600">
+          Der Raum steht um das Metallregal. Frei daneben {freeWidth} mm, davor {freeDepth} mm, darüber {freeHeight} mm.
+        </p>
         <label className="flex items-center gap-2 text-sm text-slate-800">
           <input
             type="checkbox"
             checked={showRoomEnvelope}
             onChange={(event) => setView({ showRoomEnvelope: event.target.checked })}
           />
-          Raumhülle im 3D anzeigen
+          Raum anzeigen
         </label>
       </section>
       <section className="flex flex-col gap-3">
