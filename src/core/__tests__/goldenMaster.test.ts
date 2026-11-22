@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateBom } from '../bom';
 import { generateCabinetGeometry, type PartCode } from '../geometry';
 import { cabinetConfigSchema, type CabinetConfig } from '../schema';
+import { PRESETS } from '../../store/presets';
 
 function fixedRack(
   series: CabinetConfig['series'],
@@ -102,6 +103,12 @@ describe('Golden Master', () => {
       separateRequired: 6,
       totalRequired: 38,
     });
+
+    const presetGeometry = generateCabinetGeometry(PRESETS.golden_master_l1255);
+    const presetBom = generateBom(PRESETS.golden_master_l1255, presetGeometry);
+    expect(presetBom.profilePieceCount).toBe(24);
+    expect(presetBom.netAluLengthMm).toBe(22234);
+    expect(PRESETS.golden_master_l1255.bays[0]?.levels.reduce((count, level) => count + level.boxes.length, 0)).toBe(6);
   });
 
   it('teilt Mittelsteher und setzt das Türblatt mit 3 mm Spalt', () => {
