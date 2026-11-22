@@ -1,0 +1,10 @@
+---
+description: Next.js App Router und Vercel Deployment-Regeln
+globs: src/app/**/*.tsx, src/components/**/*.tsx
+alwaysApply: false
+---
+
+- Niemals `next/dynamic(..., { ssr: false })` direkt in einer Server Component (`page.tsx` / `layout.tsx`) verwenden. Immer über eine dedizierte `'use client'`-Wrapper-Komponente kapseln.
+- Keine serverseitigen API-Routen für CAD-Berechnung, Verschnittoptimierung oder PDF/CSV-Export anlegen — alles läuft 100 % client-seitig im Browser, um Vercel-Serverless-Limits zu schonen.
+- URL-Teilen über komprimierten Base64/JSON-Query-Parameter mit strikter Zod-Validierung beim Einlesen absichern.
+- Fehler im 3D-Canvas über eine React Error Boundary abfangen (Fallback-Hinweis bei fehlendem WebGL-Kontext).

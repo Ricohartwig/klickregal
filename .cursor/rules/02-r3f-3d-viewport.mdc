@@ -1,0 +1,13 @@
+---
+description: Performance- und Architekturregeln für die 3D-Szene mit React Three Fiber v9 und React 19
+globs: src/components/viewport/**/*.tsx
+alwaysApply: false
+---
+
+- Alle Dateien starten mit `'use client'`.
+- React Three Fiber v9 und `@react-three/drei` v10 nutzen (React-19-kompatibel).
+- Umrechnung mm -> Three.js-Meter zentral über `const MM = 0.001;` (Y-up, rechtsdrehendes Koordinatensystem).
+- Wiederholte Kleinteile (Eckwinkel, Innenwinkel, Spannteller, Abdeckkappen, Scharniere, Griffe, Drehriegel) zwingend über `THREE.InstancedMesh` rendern — keine Einzel-Meshes in Schleifen.
+- `<Canvas>` immer mit `dpr={[1, 1.5]}` und `frameloop="demand"` betreiben; bei Animationen (Auszüge/Türen) `invalidate()` nur während aktiver Bewegung aufrufen.
+- Alle generierten `BufferGeometry`- und `Material`-Instanzen über `useMemo` cachen und sauber per `dispose()` aufräumen.
+- Keine Berechnungslogik für Stücklisten oder Zuschnittmaße in 3D-Komponenten — immer die fertigen berechneten Koordinaten und Teile aus `src/core/geometry.ts` rendern.

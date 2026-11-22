@@ -1,0 +1,17 @@
+---
+description: Strenge Konstruktions-, Maß-, Statik- und BOM-Regeln für den reinen TypeScript CAD-Kern
+globs: src/core/**/*.ts
+alwaysApply: false
+---
+
+- Alle Maße in Millimetern (mm). Keine Imports von React, Three.js, DOM oder Next.js.
+- Profilserien strikt trennen: `20x20_B6` (Nut 6), `30x30_B8` (Nut 8), `40x40_I8` (Nut 8 I-Typ). Niemals Zubehör anderer Nutserien mischen.
+- Eurobox-Rahmenformel (Durchfallsicherung): Lichte Öffnung = `Boxmaß - 35 mm`; Rahmenaußenmaß = `Boxmaß - 35 + 2 * p`.
+- Auszugs-Formeln:
+  - Steher Nr. 1: `einbauHoehe - 100` (für obere und untere Spannteller).
+  - Auszug längs Nr. 2: `boxLaenge - 35 + 2 * p`; Auszug quer Nr. 5: `boxBreite - 35`.
+  - Seitenrahmen Nr. 3: `L2 - 2 * p` (bei `30x30_B8` ab `boxLaenge >= 900 mm` zusätzlich `- 5 mm`).
+  - Querstrebe Nr. 4: `(L5 + 2 * p) + 2 * schienenStaerke + 2 * spiel` (`19.0 mm` bei 136kg-Schiene, `12.7 mm` bei 50kg-Schiene).
+- Nutensteine pro Schienenseite (je Schienenteil): 2 Stück bis 900 mm Auszugslänge, 3 Stück ab 1200 mm.
+- Statik: `E = 70000 N/mm^2`, zulässige Biegespannung `= 80 MPa`, Grenzwerte `L/300` (OK) und `L/200` (Warnung/Limit).
+- Jede neue Berechnungsfunktion benötigt Unit-Tests in `src/core/__tests__/` inkl. Golden-Master-Referenzfällen.
