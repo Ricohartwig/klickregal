@@ -90,10 +90,14 @@ function DoorLeaf({
   const angle = useRef(0);
   const target = useRef(THREE.MathUtils.degToRad(door.openAngleDeg));
   const invalidate = useThree((state) => state.invalidate);
-  const openTarget = THREE.MathUtils.degToRad(door.openAngleDeg >= 180 ? 180 : door.openAngleDeg > 0 ? door.openAngleDeg : 110);
   const direction = door.hingeSide === 'right' ? -1 : 1;
   const hingeX = (door.hingeSide === 'right' ? door.position.x + door.widthMm : door.position.x) * MM;
   const hingeZ = (door.position.z + door.thicknessMm) * MM;
+
+  useEffect(() => {
+    target.current = THREE.MathUtils.degToRad(door.openAngleDeg);
+    invalidate();
+  }, [door.openAngleDeg, invalidate]);
 
   useFrame((_, delta) => {
     const gap = target.current - angle.current;
@@ -119,9 +123,15 @@ function DoorLeaf({
         material={material}
         onClick={(event) => {
           event.stopPropagation();
-          const open = target.current > 0.05 ? 0 : openTarget;
-          target.current = open;
-          usePlannerStore.getState().setView({ selectedBayId: door.bayId, selectedLevelId: null });
+          const state = usePlannerStore.getState();
+          const bay = state.config.bays.find((entry) => entry.id === door.bayId);
+          if (!bay) {
+            return;
+          }
+          state.updateBay(bay.id, {
+            door: { ...bay.door, openAngleDeg: bay.door.openAngleDeg > 0 ? 0 : 110 },
+          });
+          state.setView({ selectedBayId: door.bayId, selectedLevelId: null });
           invalidate();
         }}
       >

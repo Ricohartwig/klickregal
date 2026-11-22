@@ -2,6 +2,7 @@
 
 import { getSlideForSeries } from '@/core/catalog';
 import type { BayMode, LevelType } from '@/core/schema';
+import { EuroboxSelector } from '@/components/ui/EuroboxSelector';
 import { useCabinetDerived, usePlannerStore } from '@/store/usePlannerStore';
 
 const WIDTHS = [300, 400, 600, 800, 900, 1200];
@@ -141,6 +142,9 @@ export function BaysLevelsTab() {
                 <button type="button" className="ml-2 text-xs text-slate-500" onClick={() => removeLevel(bay.id, level.id)}>
                   Entfernen
                 </button>
+                {active && level.type !== 'clothes_rail' ? (
+                  <EuroboxSelector bayId={bay.id} level={level} collisions={collisions} />
+                ) : null}
                 <label className="mt-2 flex flex-col gap-1 text-xs text-slate-600">
                   Höhe {Math.round(level.yMm)} mm
                   <input

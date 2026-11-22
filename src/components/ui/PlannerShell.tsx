@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { BaysLevelsTab } from '@/components/ui/BaysLevelsTab';
+import { PanelsAccessoriesTab } from '@/components/ui/PanelsAccessoriesTab';
 import { RoomSystemTab } from '@/components/ui/RoomSystemTab';
 import { TopToolbar } from '@/components/ui/TopToolbar';
 import { ViewportClientWrapper } from '@/components/viewport/ViewportClientWrapper';
 import { redoPlanner, undoPlanner, useCabinetDerived } from '@/store/usePlannerStore';
 
 export function PlannerShell() {
-  const [tab, setTab] = useState<'room' | 'bays'>('room');
+  const [tab, setTab] = useState<'room' | 'bays' | 'panels'>('room');
   const [drawer, setDrawer] = useState(false);
   const { bom, cuttingPlan, collisions } = useCabinetDerived();
 
@@ -43,23 +44,32 @@ export function PlannerShell() {
       <TopToolbar onToggleDrawer={() => setDrawer((open) => !open)} />
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-[380px] min-w-[360px] max-w-[400px] shrink-0 flex-col border-r border-slate-200 bg-white">
-          <div className="flex border-b border-slate-200">
+          <div className="grid grid-cols-3 border-b border-slate-200">
             <button
               type="button"
-              className={`h-10 flex-1 text-sm ${tab === 'room' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
+              className={`px-1 py-2 text-[11px] leading-tight ${tab === 'room' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
               onClick={() => setTab('room')}
             >
               Raum & System
             </button>
             <button
               type="button"
-              className={`h-10 flex-1 text-sm ${tab === 'bays' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
+              className={`px-1 py-2 text-[11px] leading-tight ${tab === 'bays' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
               onClick={() => setTab('bays')}
             >
               Felder & Ebenen
             </button>
+            <button
+              type="button"
+              className={`px-1 py-2 text-[11px] leading-tight ${tab === 'panels' ? 'border-b-2 border-slate-900 font-semibold' : 'text-slate-500'}`}
+              onClick={() => setTab('panels')}
+            >
+              Verkleidung, Türen & Zubehör
+            </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">{tab === 'room' ? <RoomSystemTab /> : <BaysLevelsTab />}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {tab === 'room' ? <RoomSystemTab /> : tab === 'bays' ? <BaysLevelsTab /> : <PanelsAccessoriesTab />}
+          </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <main className="relative min-h-0 flex-1">
