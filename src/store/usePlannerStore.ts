@@ -12,7 +12,7 @@ import { getSlideForSeries } from '@/core/catalog';
 import { evaluateStatics } from '@/core/statics';
 import { DEFAULT_PRESET_ID, PRESETS, type PresetId } from '@/store/presets';
 
-export type CameraPreset = 'iso' | 'front' | 'left' | 'top';
+export type CameraPreset = 'iso' | 'front' | 'side' | 'top';
 
 const PRICE_STORAGE_KEY = 'klickregal-custom-prices';
 const MAX_BAYS = 5;

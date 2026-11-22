@@ -1,9 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useRef } from 'react';
 import { WebGLErrorBoundary } from './WebGLErrorBoundary';
 
-const TestScene = dynamic(() => import('./TestScene'), {
+const CabinetScene = dynamic(() => import('./CabinetScene'), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-sm text-neutral-600">
@@ -13,10 +14,12 @@ const TestScene = dynamic(() => import('./TestScene'), {
 });
 
 export function ViewportClientWrapper() {
+  const portalRef = useRef<HTMLDivElement>(null);
   return (
     <WebGLErrorBoundary>
-      <div className="h-full w-full">
-        <TestScene />
+      <div className="relative h-full w-full">
+        <div ref={portalRef} className="pointer-events-none absolute inset-0" />
+        <CabinetScene portal={portalRef} />
       </div>
     </WebGLErrorBoundary>
   );
