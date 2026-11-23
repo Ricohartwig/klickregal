@@ -193,7 +193,7 @@ describe('generateCabinetGeometry', () => {
       .sort((a, b) => a - b);
     expect(korpus).toEqual([425, 425, 565, 565]);
     expect(result.hardware.filter((part) => part.kind === 'inside_bracket')).toHaveLength(4);
-    expect(result.hardware.filter((part) => part.kind === 'corner_bracket')).toHaveLength(4);
+    expect(result.hardware.filter((part) => part.kind === 'corner_bracket')).toHaveLength(8);
   });
 
   it('does not import react, three, or next', () => {

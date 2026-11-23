@@ -4,8 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { CabinetGeometryResult, HardwareKind, ProfilePart, Vec3 } from '@/core/geometry';
-import { profileOriginMm } from '@/components/viewport/profilePlacement';
+import type { CabinetGeometryResult, HardwareKind, HardwarePart } from '@/core/geometry';
 
 const MM = 0.001;
 
@@ -28,22 +27,6 @@ function centerGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
     );
   }
   return geometry;
-}
-
-function lBracketGeometry(armMm: number, thickMm: number, depthMm: number): THREE.ExtrudeGeometry {
-  const arm = armMm * MM;
-  const thick = thickMm * MM;
-  const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.lineTo(arm, 0);
-  shape.lineTo(arm, thick);
-  shape.lineTo(thick, thick);
-  shape.lineTo(thick, arm);
-  shape.lineTo(0, arm);
-  shape.closePath();
-  return centerGeometry(
-    new THREE.ExtrudeGeometry(shape, { depth: depthMm * MM, bevelEnabled: false, steps: 1 }),
-  ) as THREE.ExtrudeGeometry;
 }
 
 function handleGeometry(): THREE.ExtrudeGeometry {
@@ -125,91 +108,56 @@ function InstancedParts({
   );
 }
 
-function profileAxis(rotation: Vec3): THREE.Vector3 {
-  if (Math.abs(rotation.z) === 90) {
-    return new THREE.Vector3(0, rotation.z > 0 ? 1 : -1, 0);
-  }
-  if (Math.abs(rotation.y) === 90) {
-    return new THREE.Vector3(0, 0, rotation.y < 0 ? 1 : -1);
-  }
-  return new THREE.Vector3(1, 0, 0);
-}
-
-function sectionMm(part: ProfilePart): number {
-  if (part.series === '20x20_B6') {
+function sectionMm(series: string | undefined): number {
+  if (series === '20x20_B6') {
     return 20;
   }
-  if (part.series === '40x40_I8') {
+  if (series === '40x40_I8') {
     return 40;
   }
   return 30;
 }
 
-function endConnectorGeometry(section: number): THREE.BufferGeometry {
-  const size = section * MM * 0.96;
-  const length = Math.max(36, section + 8) * MM;
-  const body = new THREE.BoxGeometry(length, size, size);
-  body.translate(length / 2, 0, 0);
-  const bolt = new THREE.CylinderGeometry(3.2 * MM, 3.2 * MM, 5 * MM, 10);
-  const boltA = bolt.clone();
-  const boltB = bolt.clone();
-  boltA.translate(length * 0.32, size / 2 + 2.5 * MM, -size * 0.22);
-  boltB.translate(length * 0.72, size / 2 + 2.5 * MM, size * 0.22);
-  const merged = mergeGeometries([body, boltA, boltB], false);
-  body.dispose();
+function angleGeometry(armMm: number, stripMm: number, thickMm: number): THREE.BufferGeometry {
+  const arm = armMm * MM;
+  const strip = stripMm * MM;
+  const thick = thickMm * MM;
+  const legU = new THREE.BoxGeometry(arm, thick, strip);
+  legU.translate(arm / 2, thick / 2, strip / 2);
+  const legV = new THREE.BoxGeometry(strip, thick, arm);
+  legV.translate(strip / 2, thick / 2, arm / 2);
+  const bolt = new THREE.CylinderGeometry(2.4 * MM, 2.4 * MM, 3.2 * MM, 8);
+  const boltU = bolt.clone();
+  const boltV = bolt.clone();
+  boltU.translate(arm * 0.62, thick + 1.6 * MM, strip / 2);
+  boltV.translate(strip / 2, thick + 1.6 * MM, arm * 0.62);
+  const merged = mergeGeometries([legU, legV, boltU, boltV], false);
+  legU.dispose();
+  legV.dispose();
   bolt.dispose();
-  boltA.dispose();
-  boltB.dispose();
-  return merged ?? new THREE.BoxGeometry(length, size, size);
+  boltU.dispose();
+  boltV.dispose();
+  return merged ?? new THREE.BoxGeometry(arm, thick, strip);
 }
 
-function bracketCapGeometry(section: number): THREE.BoxGeometry {
-  const size = section * MM + 1.5 * MM;
-  const cap = new THREE.BoxGeometry(6 * MM, size, size);
-  cap.translate(-3 * MM, 0, 0);
-  return cap;
-}
-
-function seatedBracket(
-  target: Vec3,
-  profiles: ProfilePart[],
+function bracketMatrix(
+  part: HardwarePart,
   bounds: CabinetGeometryResult['boundingBox'],
   explosionFactor: number,
-): { body: THREE.Matrix4; cap: THREE.Matrix4 } | null {
-  let bestDistance = 45;
-  let best: { end: Vec3; inward: THREE.Vector3 } | null = null;
-  for (const profile of profiles) {
-    if (Math.abs(profile.rotation.z) === 90) {
-      continue;
-    }
-    const axis = profileAxis(profile.rotation);
-    const start = profileOriginMm(profile.position, profile.rotation, sectionMm(profile));
-    const end = {
-      x: start.x + axis.x * profile.lengthMm,
-      y: start.y + axis.y * profile.lengthMm,
-      z: start.z + axis.z * profile.lengthMm,
-    };
-    for (const candidate of [
-      { end: start, inward: axis.clone() },
-      { end, inward: axis.clone().negate() },
-    ]) {
-      const distance = Math.hypot(candidate.end.x - target.x, candidate.end.y - target.y, candidate.end.z - target.z);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = candidate;
-      }
-    }
+): THREE.Matrix4 {
+  const heel = exploded(part.position.x, part.position.y, part.position.z, bounds, explosionFactor);
+  const armU = part.armU ?? { x: 1, y: 0, z: 0 };
+  const armV = part.armV ?? { x: 0, y: 0, z: 1 };
+  const normal = part.normal ?? { x: 0, y: 1, z: 0 };
+  const x = new THREE.Vector3(armU.x, armU.y, armU.z).normalize();
+  const y = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+  const z = new THREE.Vector3(armV.x, armV.y, armV.z).normalize();
+  if (x.clone().cross(y).dot(z) < 0) {
+    z.negate();
   }
-  if (!best) {
-    return null;
-  }
-  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), best.inward.clone().normalize());
-  const end = exploded(best.end.x, best.end.y, best.end.z, bounds, explosionFactor);
-  const body = end.clone().add(best.inward.clone().normalize().multiplyScalar(18 * MM));
-  return {
-    body: new THREE.Matrix4().compose(body, quaternion, new THREE.Vector3(1, 1, 1)),
-    cap: new THREE.Matrix4().compose(end, quaternion, new THREE.Vector3(1, 1, 1)),
-  };
+  const matrix = new THREE.Matrix4().makeBasis(x, y, z);
+  matrix.setPosition(heel);
+  return matrix;
 }
 
 function pointMatrix(position: THREE.Vector3, rotation?: THREE.Euler, scale?: THREE.Vector3): THREE.Matrix4 {
@@ -228,10 +176,15 @@ export function HardwareInstances({
   explosionFactor?: number;
 }) {
   const invalidate = useThree((state) => state.invalidate);
-  const section = geometry.profiles[0] ? sectionMm(geometry.profiles[0]) : 30;
-  const cornerGeometry = useMemo(() => endConnectorGeometry(section), [section]);
-  const bracketCapGeometryMemo = useMemo(() => bracketCapGeometry(section), [section]);
-  const insideGeometry = useMemo(() => lBracketGeometry(18, 3, 3), []);
+  const section = sectionMm(geometry.profiles[0]?.series);
+  const cornerGeometry = useMemo(
+    () => angleGeometry(section + 4, Math.round(section * 0.7), 4),
+    [section],
+  );
+  const insideGeometry = useMemo(
+    () => angleGeometry(Math.round(section * 0.8), Math.max(8, Math.round(section * 0.32)), 3.5),
+    [section],
+  );
   const clampGeometry = useMemo(() => spanntellerGeometry(), []);
   const footGeometry = useMemo(() => boxGeometry(65, 2.5, 65), []);
   const capGeometry = useMemo(() => boxGeometry(30, 3, 30), []);
@@ -241,8 +194,9 @@ export function HardwareInstances({
   const catchGeometry = useMemo(() => boxGeometry(32, 12, 16), []);
   const slideGeometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
 
-  const cornerMaterial = useMemo(() => material('#d5d8de', 0.72, 0.32), []);
-  const insideMaterial = useMemo(() => material('#d5d8de', 0.72, 0.32), []);
+  const bracketColor = geometry.profiles[0]?.finish === 'black' ? '#9aa0a8' : '#1c1c1c';
+  const cornerMaterial = useMemo(() => material(bracketColor, 0.55, 0.38), [bracketColor]);
+  const insideMaterial = useMemo(() => material(bracketColor, 0.45, 0.42), [bracketColor]);
   const clampMaterial = useMemo(() => material('#1c1c1c', 0.2, 0.72), []);
   const footMaterial = useMemo(() => material('#b8b8b8', 0.7, 0.35), []);
   const capMaterial = useMemo(() => material('#22252a', 0.4, 0.5), []);
@@ -255,7 +209,6 @@ export function HardwareInstances({
   useEffect(() => {
     const geometries = [
       cornerGeometry,
-      bracketCapGeometryMemo,
       insideGeometry,
       clampGeometry,
       footGeometry,
@@ -283,7 +236,6 @@ export function HardwareInstances({
       materials.forEach((entry) => entry.dispose());
     };
   }, [
-    bracketCapGeometryMemo,
     capGeometry,
     capMaterial,
     catchGeometry,
@@ -318,10 +270,6 @@ export function HardwareInstances({
         const top = part.position.y > geometry.boundingBox.heightMm / 2;
         return pointMatrix(position, top ? new THREE.Euler(Math.PI, 0, 0) : undefined);
       });
-    const seated = geometry.hardware
-      .filter((part) => part.kind === 'corner_bracket')
-      .map((part) => seatedBracket(part.position, geometry.profiles, geometry.boundingBox, explosionFactor))
-      .filter((entry): entry is { body: THREE.Matrix4; cap: THREE.Matrix4 } => entry !== null);
     const slides = geometry.slides.map((part) => {
       const position = at(part);
       const alongZ = part.axis === 'z';
@@ -341,9 +289,12 @@ export function HardwareInstances({
       );
     });
     return {
-      corner: seated.map((entry) => entry.body),
-      bracketCaps: seated.map((entry) => entry.cap),
-      inside: explosionFactor > 0 ? ofKind('inside_bracket') : [],
+      corner: geometry.hardware
+        .filter((part) => part.kind === 'corner_bracket' && !part.isMoving)
+        .map((part) => bracketMatrix(part, geometry.boundingBox, explosionFactor)),
+      inside: geometry.hardware
+        .filter((part) => part.kind === 'inside_bracket' && !part.isMoving)
+        .map((part) => bracketMatrix(part, geometry.boundingBox, explosionFactor)),
       clamp: clamps,
       foot: ofKind('foot_plate'),
       cap: ofKind('end_cap'),
@@ -364,7 +315,6 @@ export function HardwareInstances({
   return (
     <group>
       <InstancedParts geometry={cornerGeometry} surface={cornerMaterial} matrices={placed.corner} />
-      <InstancedParts geometry={bracketCapGeometryMemo} surface={capMaterial} matrices={placed.bracketCaps} />
       <InstancedParts geometry={insideGeometry} surface={insideMaterial} matrices={placed.inside} />
       <InstancedParts geometry={clampGeometry} surface={clampMaterial} matrices={placed.clamp} />
       <InstancedParts geometry={footGeometry} surface={footMaterial} matrices={placed.foot} />
@@ -374,6 +324,45 @@ export function HardwareInstances({
       <InstancedParts geometry={hingeGeometry} surface={hingeMaterial} matrices={placed.hinge} />
       <InstancedParts geometry={catchGeometry} surface={catchMaterial} matrices={placed.catch} />
       <InstancedParts geometry={slideGeometry} surface={slideMaterial} matrices={placed.slides} />
+    </group>
+  );
+}
+
+export function LevelBrackets({
+  geometry,
+  levelId,
+  explosionFactor,
+}: {
+  geometry: CabinetGeometryResult;
+  levelId: string;
+  explosionFactor: number;
+}) {
+  const section = sectionMm(geometry.profiles[0]?.series);
+  const bracketColor = geometry.profiles[0]?.finish === 'black' ? '#9aa0a8' : '#1c1c1c';
+  const cornerGeometry = useMemo(() => angleGeometry(section + 4, Math.round(section * 0.7), 4), [section]);
+  const insideGeometry = useMemo(
+    () => angleGeometry(Math.round(section * 0.8), Math.max(8, Math.round(section * 0.32)), 3.5),
+    [section],
+  );
+  const surface = useMemo(() => material(bracketColor, 0.55, 0.38), [bracketColor]);
+  useEffect(() => {
+    return () => {
+      cornerGeometry.dispose();
+      insideGeometry.dispose();
+      surface.dispose();
+    };
+  }, [cornerGeometry, insideGeometry, surface]);
+  const moving = geometry.hardware.filter((part) => part.isMoving && part.levelId === levelId);
+  const corner = moving
+    .filter((part) => part.kind === 'corner_bracket')
+    .map((part) => bracketMatrix(part, geometry.boundingBox, explosionFactor));
+  const inside = moving
+    .filter((part) => part.kind === 'inside_bracket')
+    .map((part) => bracketMatrix(part, geometry.boundingBox, explosionFactor));
+  return (
+    <group>
+      <InstancedParts geometry={cornerGeometry} surface={surface} matrices={corner} />
+      <InstancedParts geometry={insideGeometry} surface={surface} matrices={inside} />
     </group>
   );
 }

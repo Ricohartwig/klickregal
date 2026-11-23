@@ -92,16 +92,16 @@ describe('Golden Master', () => {
     expect(bom.netAluWeightKg).toBeCloseTo(19.34, 2);
     expect(bom.netAluWeightKg).toBeCloseTo((22234 * 0.87) / 1000, 6);
     expect(bom.insideBrackets).toBe(12);
-    expect(bom.cornerBrackets).toBe(16);
+    expect(bom.cornerBrackets).toBe(24);
     expect(bom.clamps).toBe(8);
     expect(bom.slidePairs).toEqual([{ lengthMm: 1200, pairs: 3 }]);
     expect(bom.rotaryLatches).toBe(3);
     expect(bom.handles).toBe(3);
     expect(bom.tNutsM5).toBe(42);
     expect(bom.tNutsM6).toEqual({
-      includedInCornerBrackets: 32,
+      includedInCornerBrackets: 48,
       separateRequired: 6,
-      totalRequired: 38,
+      totalRequired: 54,
     });
 
     const presetGeometry = generateCabinetGeometry(PRESETS.golden_master_l1255);

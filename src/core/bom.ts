@@ -192,25 +192,8 @@ export function generateBom(
     (sum, bay) => sum + bay.levels.filter((level) => level.type === 'pullout').length,
     0,
   );
-  const fixedEuroboxCount = config.bays.reduce(
-    (sum, bay) => sum + bay.levels.filter((level) => level.type === 'fixed_eurobox').length,
-    0,
-  );
-  const fixedShelfCount = config.bays.reduce(
-    (sum, bay) =>
-      sum +
-      bay.levels.filter(
-        (level) =>
-          level.type === 'fixed_eurobox' ||
-          level.type === 'solid_shelf' ||
-          level.type === 'riffle_plate',
-      ).length,
-    0,
-  );
-  const nr3Count = geometry.profiles.filter((part) => part.partCode === 'Nr.3').length;
-  const nr4Count = geometry.profiles.filter((part) => part.partCode === 'Nr.4').length;
-  const insideBrackets = 4 * (pulloutCount + fixedEuroboxCount);
-  const cornerBrackets = 2 * nr3Count + 2 * nr4Count + 4 * fixedShelfCount;
+  const insideBrackets = geometry.hardware.filter((part) => part.kind === 'inside_bracket').length;
+  const cornerBrackets = geometry.hardware.filter((part) => part.kind === 'corner_bracket').length;
 
   const extraLatches = config.accessories.filter((item) => item.type === 'rotary_latch').length;
   const extraHandles = config.accessories.filter((item) => item.type === 'handle').length;

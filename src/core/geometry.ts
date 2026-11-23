@@ -95,10 +95,17 @@ export type HardwareKind =
 export interface HardwarePart {
   kind: HardwareKind;
   catalogId: string | null;
+  /** Heel of a bracket, or the anchor point of any other fitting. */
   position: Vec3;
   bayId: string | null;
   levelId: string | null;
   isMoving: boolean;
+  /** Unit direction of the first bracket arm. Absent on fittings that are not angles. */
+  armU?: Vec3;
+  /** Unit direction of the second bracket arm. */
+  armV?: Vec3;
+  /** Unit direction of the bracket thickness, pointing off the profile face. */
+  normal?: Vec3;
 }
 
 export interface EuroboxInstance {
@@ -343,41 +350,6 @@ function addSupportFrame(
   longitudinal(0);
   longitudinal(frameW - p);
 
-  const series = getProfileSeries(config.series);
-  const cornerId = compatibleHardwareId(config.series, series.cornerBracketId);
-  const insideId = compatibleHardwareId(config.series, series.insideBracketId);
-  for (const across of [0, frameW]) {
-    for (const along of [0, frameD]) {
-      const position = { x: frameX, y: frameY, z: frameZ };
-      position[widthAxis] += across;
-      position[lengthAxis] += along;
-      if (cornerId) {
-        build.hardware.push({
-          kind: 'corner_bracket',
-          catalogId: cornerId,
-          position,
-          bayId: bay.id,
-          levelId: level.id,
-          isMoving: false,
-        });
-      }
-      if (insideId) {
-        build.hardware.push({
-          kind: 'inside_bracket',
-          catalogId: insideId,
-          position: {
-            x: position.x + (across === 0 ? p : -p),
-            y: position.y,
-            z: position.z + (along === 0 ? p : -p),
-          },
-          bayId: bay.id,
-          levelId: level.id,
-          isMoving: false,
-        });
-      }
-    }
-  }
-
   return { frameW: mm(frameW), frameD: mm(frameD) };
 }
 
@@ -507,37 +479,6 @@ function addPullout(
     levelId: level.id,
     isMoving: true,
   });
-
-  const cornerId = compatibleHardwareId(config.series, series.cornerBracketId);
-  const insideId = compatibleHardwareId(config.series, series.insideBracketId);
-  if (cornerId) {
-    for (const across of [0, p + l4]) {
-      for (const along of [0, l3]) {
-        build.hardware.push({
-          kind: 'corner_bracket',
-          catalogId: cornerId,
-          position: at(across, along, false),
-          bayId: bay.id,
-          levelId: level.id,
-          isMoving: false,
-        });
-      }
-    }
-  }
-  if (insideId) {
-    for (const across of [0, frameW - p]) {
-      for (const along of [0, l2 - p]) {
-        build.hardware.push({
-          kind: 'inside_bracket',
-          catalogId: insideId,
-          position: movingAt(across, along),
-          bayId: bay.id,
-          levelId: level.id,
-          isMoving: true,
-        });
-      }
-    }
-  }
 
   const chosen = slideLengthFor(config.series, level);
   for (const side of ['left', 'right'] as const) {
@@ -976,6 +917,245 @@ function addAccessory(
   });
 }
 
+type AxisName = 'x' | 'y' | 'z';
+
+const AXES: readonly AxisName[] = ['x', 'y', 'z'];
+const JOINT_GAP_MM = 8;
+
+interface ProfileBox {
+  min: Vec3;
+  max: Vec3;
+  axis: AxisName;
+  moving: boolean;
+  bayId: string | null;
+  levelId: string | null;
+}
+
+function axisName(rotation: Vec3): AxisName {
+  if (Math.abs(rotation.z) === 90) {
+    return 'y';
+  }
+  if (Math.abs(rotation.y) === 90) {
+    return 'z';
+  }
+  return 'x';
+}
+
+function profileBox(part: ProfilePart, section: number): ProfileBox {
+  const axis = axisName(part.rotation);
+  const max = { ...part.position };
+  max[axis] += part.lengthMm;
+  for (const key of AXES) {
+    if (key !== axis) {
+      max[key] += section;
+    }
+  }
+  return {
+    min: { ...part.position },
+    max,
+    axis,
+    moving: part.isMoving,
+    bayId: part.bayId,
+    levelId: part.levelId,
+  };
+}
+
+function overlap1d(a0: number, a1: number, b0: number, b1: number): number {
+  return Math.min(a1, b1) - Math.max(a0, b0);
+}
+
+function unitOn(axis: AxisName, sign: number): Vec3 {
+  return { x: axis === 'x' ? sign : 0, y: axis === 'y' ? sign : 0, z: axis === 'z' ? sign : 0 };
+}
+
+function coverage(box: ProfileBox, axis: AxisName, origin: number, sign: number, section: number): number {
+  const slack = JOINT_GAP_MM;
+  const reach =
+    sign > 0
+      ? origin < box.min[axis] - slack || origin > box.max[axis] + slack
+        ? 0
+        : Math.max(0, box.max[axis] - origin)
+      : origin > box.max[axis] + slack || origin < box.min[axis] - slack
+        ? 0
+        : Math.max(0, origin - box.min[axis]);
+  return Math.min(reach, section * 2);
+}
+
+function placeProfileJoints(build: Build, config: CabinetConfig): void {
+  const series = getProfileSeries(config.series);
+  const section = series.sectionMm;
+  const cornerId = compatibleHardwareId(config.series, series.cornerBracketId);
+  const insideId = compatibleHardwareId(config.series, series.insideBracketId);
+  if (!cornerId && !insideId) {
+    return;
+  }
+  const boxes = build.profiles.map((part) => profileBox(part, section));
+  if (boxes.length === 0) {
+    return;
+  }
+  const center = boxes.reduce(
+    (sum, box) => ({
+      x: sum.x + (box.min.x + box.max.x) / 2,
+      y: sum.y + (box.min.y + box.max.y) / 2,
+      z: sum.z + (box.min.z + box.max.z) / 2,
+    }),
+    { x: 0, y: 0, z: 0 },
+  );
+  center.x /= boxes.length;
+  center.y /= boxes.length;
+  center.z /= boxes.length;
+  const seen = new Set<string>();
+
+  const pushBracket = (
+    kind: 'corner_bracket' | 'inside_bracket',
+    catalogId: string,
+    heel: Vec3,
+    armU: Vec3,
+    armV: Vec3,
+    normal: Vec3,
+    box: ProfileBox,
+  ) => {
+    const key = [
+      kind,
+      Math.round(heel.x),
+      Math.round(heel.y),
+      Math.round(heel.z),
+      normal.x,
+      normal.y,
+      normal.z,
+    ].join(':');
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    build.hardware.push({
+      kind,
+      catalogId,
+      position: { x: mm(heel.x), y: mm(heel.y), z: mm(heel.z) },
+      bayId: box.bayId,
+      levelId: box.levelId,
+      isMoving: box.moving,
+      armU,
+      armV,
+      normal,
+    });
+  };
+
+  const orient = (a: ProfileBox, b: ProfileBox, planeAxis: AxisName, planePos: number, sign: number) => {
+    const free = AXES.filter((axis) => axis !== planeAxis);
+    const heel: Vec3 = { x: planePos, y: planePos, z: planePos };
+    const arms: Vec3[] = [];
+    for (const axis of free) {
+      const lo = Math.max(a.min[axis], b.min[axis]);
+      const hi = Math.min(a.max[axis], b.max[axis]);
+      if (hi < lo - JOINT_GAP_MM) {
+        return;
+      }
+      const spanLo = Math.min(lo, hi);
+      const spanHi = Math.max(lo, hi);
+      let origin = spanLo;
+      let sign = 1;
+      if (spanHi - spanLo < section * 0.4) {
+        const plus = coverage(a, axis, spanLo, 1, section) + coverage(b, axis, spanLo, 1, section);
+        const minus = coverage(a, axis, spanHi, -1, section) + coverage(b, axis, spanHi, -1, section);
+        if (minus > plus) {
+          origin = spanHi;
+          sign = -1;
+        }
+      }
+      heel[axis] = origin;
+      arms.push(unitOn(axis, sign));
+    }
+    const armU = arms[0];
+    const armV = arms[1];
+    if (!armU || !armV) {
+      return;
+    }
+    const normal = unitOn(planeAxis, sign);
+    const owner = a.levelId ? a : b;
+    if (cornerId) {
+      pushBracket('corner_bracket', cornerId, heel, armU, armV, normal, owner);
+    }
+    const frameCorner = a.axis !== 'y' && b.axis !== 'y';
+    if (insideId && frameCorner) {
+      const inset = section * 0.45;
+      pushBracket(
+        'inside_bracket',
+        insideId,
+        {
+          x: heel.x + (armU.x + armV.x) * inset,
+          y: heel.y + (armU.y + armV.y) * inset,
+          z: heel.z + (armU.z + armV.z) * inset,
+        },
+        armU,
+        armV,
+        normal,
+        owner,
+      );
+    }
+  };
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (!a || !b || a.moving !== b.moving || a.axis === b.axis) {
+        continue;
+      }
+      const planeAxis = AXES.find((axis) => axis !== a.axis && axis !== b.axis);
+      if (!planeAxis) {
+        continue;
+      }
+      let joined = false;
+      for (const ender of [a, b]) {
+        const other = ender === a ? b : a;
+        const ends = [ender.min[ender.axis], ender.max[ender.axis]];
+        const faces = [other.min[ender.axis], other.max[ender.axis]];
+        for (const end of ends) {
+          for (const face of faces) {
+            if (Math.abs(end - face) > JOINT_GAP_MM) {
+              continue;
+            }
+            const cross = AXES.filter((axis) => axis !== ender.axis);
+            const overlaps = cross.map((axis) => overlap1d(ender.min[axis], ender.max[axis], other.min[axis], other.max[axis]));
+            const touching = overlaps.every((value) => value > -1);
+            const supported = overlaps.some((value) => value > section * 0.4);
+            if (touching && supported) {
+              joined = true;
+            }
+          }
+        }
+      }
+      if (!joined) {
+        continue;
+      }
+      const shared: Array<{ pos: number; sign: number }> = [];
+      for (const sign of [-1, 1]) {
+        const aPos = sign < 0 ? a.min[planeAxis] : a.max[planeAxis];
+        const bPos = sign < 0 ? b.min[planeAxis] : b.max[planeAxis];
+        if (Math.abs(aPos - bPos) <= 2) {
+          shared.push({ pos: (aPos + bPos) / 2, sign });
+        }
+      }
+      const vertical = planeAxis !== 'y' ? shared : [];
+      const pool = vertical.length > 0 ? vertical : shared.filter((face) => face.sign < 0);
+      let chosen = pool[0];
+      let bestToward = -Infinity;
+      for (const face of pool) {
+        const toward = (center[planeAxis] - face.pos) * face.sign;
+        if (toward > bestToward) {
+          bestToward = toward;
+          chosen = face;
+        }
+      }
+      if (!chosen) {
+        continue;
+      }
+      orient(a, b, planeAxis, chosen.pos, chosen.sign);
+    }
+  }
+}
+
 export function generateCabinetGeometry(config: CabinetConfig): CabinetGeometryResult {
   const series = getProfileSeries(config.series);
   const p = series.sectionMm;
@@ -1010,6 +1190,8 @@ export function generateCabinetGeometry(config: CabinetConfig): CabinetGeometryR
   for (const accessory of config.accessories) {
     addAccessory(build, config, accessory, outerWidth);
   }
+
+  placeProfileJoints(build, config);
 
   return {
     ...build,

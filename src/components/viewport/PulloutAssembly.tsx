@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { CollisionIssue } from '@/core/collision';
 import type { CabinetGeometryResult, ProfilePart } from '@/core/geometry';
 import { EuroboxMesh } from '@/components/viewport/EuroboxMesh';
+import { LevelBrackets } from '@/components/viewport/HardwareInstances';
 import { createUnitProfileGeometry } from '@/components/viewport/ProfileMesh';
 import { profileOriginMm } from '@/components/viewport/profilePlacement';
 import type { ProfileSeriesId } from '@/core/schema';
@@ -117,6 +118,7 @@ function PulloutGroup({
           />
         );
       })}
+      <LevelBrackets geometry={geometry} levelId={levelId} explosionFactor={explosionFactor} />
       <EuroboxMesh
         boxes={boxes}
         collisions={collisions}
